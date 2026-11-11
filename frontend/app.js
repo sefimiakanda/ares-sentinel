@@ -1,6 +1,7 @@
 // Ares Sentinel - frontend en JavaScript simple (aucun framework).
 
 const COULEURS = { vert: "#3ddc97", orange: "#ffb347", rouge: "#ff5a4d", gris: "#8a8f98" };
+const EN_LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
 const NOMS_FACTEURS = {
   froid: "❄️ Froid",
   amplitude: "🌡️ Écart jour/nuit",
@@ -76,6 +77,13 @@ function dessinerCarte() {
     ctx.strokeStyle = actif ? "#fff" : "rgba(255,255,255,0.4)";
     ctx.stroke();
 
+    if (actif) { // anneau qui pulse autour du site actif
+      const t = (performance.now() % 1800) / 1800;
+      ctx.beginPath(); ctx.arc(x, y, 16 + t * 24, 0, Math.PI * 2);
+      ctx.strokeStyle = couleur; ctx.globalAlpha = 1 - t; ctx.lineWidth = 2; ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
     ctx.fillStyle = "#fff";
     ctx.font = "bold 14px sans-serif";
     ctx.fillText(site.nom, x + 22, y + 5);
@@ -105,14 +113,27 @@ function cliquerCarte(evenement) {
 }
 
 // ---------- VERDICT ----------
+// Anime l'indice de 0 jusqu'à sa valeur
+function compter(el, cible) {
+  const debut = performance.now(), duree = 700;
+  const pas = (t) => {
+    const k = Math.min((t - debut) / duree, 1);
+    el.textContent = `Indice de risque : ${(cible * (1 - Math.pow(1 - k, 3))).toFixed(1)} / 100`;
+    if (k < 1) requestAnimationFrame(pas);
+  };
+  requestAnimationFrame(pas);
+}
+
 function afficherVerdict(d) {
   const boite = document.getElementById("verdict");
   boite.className = "verdict " + d.verdict.couleur;
   boite.innerHTML = "";
   boite.append(d.verdict.texte);
   const petit = document.createElement("small");
-  petit.textContent = d.indice === null ? "Indice indisponible" : `Indice de risque : ${d.indice} / 100`;
+  if (d.indice === null) petit.textContent = "Indice indisponible";
+  else compter(petit, d.indice);
   boite.append(petit);
+  if (window.Plexus) Plexus.setColor(COULEURS[d.verdict.couleur]); // le réseau Plexus prend la couleur du verdict
 
   document.getElementById("sol-affiche").textContent = "Sol " + d.sol;
   document.getElementById("date-saison").textContent =
@@ -368,13 +389,16 @@ async function demarrer() {
     }
 
     await choisirSol(solsValides[solsValides.length - 1].sol);
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      (function boucleCarte() { dessinerCarte(); requestAnimationFrame(boucleCarte); })();
+    }
     await chargerAnomalies();
     const sante = await api("/api/sante");
     ajouterMessage(
       "ia",
       sante.assistant === "ollama"
         ? `Bonjour ! Je suis branché sur un LLM local gratuit (Ollama, modèle ${sante.assistant_modele}). Je ne cite que les chiffres que mes outils lisent dans les données de Curiosity. Essaie un des exemples ci-dessus.`
-        : `Bonjour ! Mode sans LLM : ${sante.assistant_raison} En attendant, je réponds avec des règles, uniquement à partir des mesures de Curiosity.`
+        : `Bonjour ! Mode sans LLM : ${EN_LOCAL ? sante.assistant_raison + " " : ""}En attendant, je réponds avec des règles, uniquement à partir des mesures de Curiosity.`
     );
   } catch (e) {
     document.getElementById("verdict").textContent = "Impossible de joindre le serveur. Lance le backend (voir README).";

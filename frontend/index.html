@@ -7,70 +7,71 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header>
-    <h1>🛡️ Ares Sentinel</h1>
-    <p>La carte intelligente qui aide les premiers astronautes à décider si une sortie sur Mars est sûre.</p>
-  </header>
+  <canvas id="plexus" aria-hidden="true"></canvas>
 
-  <main>
-    <!-- 1. CARTE + VERDICT -->
-    <section class="carte-verdict">
-      <div class="panneau">
-        <h2>🗺️ Carte interactive</h2>
-        <canvas id="carte" width="800" height="560"></canvas>
-        <p class="petit">Fond schématique (pas une image réelle de Mars). Clique sur un site.</p>
-      </div>
+  <div class="page">
+    <header>
+      <h1>🛡️ Ares Sentinel</h1>
+      <p>La carte intelligente qui aide les premiers astronautes à décider si une sortie sur Mars est sûre.</p>
+    </header>
 
-      <div class="panneau" id="verdict-panneau">
-        <h2>🚦 Verdict de sortie</h2>
-        <div class="selecteur">
-          <label for="slider">Jour martien (sol) :</label>
-          <input type="range" id="slider" min="0" max="0" value="0" />
-          <strong id="sol-affiche">–</strong>
-          <button id="btn-dernier">Dernier sol</button>
+    <main>
+      <section class="carte-verdict">
+        <div class="panneau">
+          <h2>🗺️ Carte interactive</h2>
+          <canvas id="carte" width="800" height="560"></canvas>
+          <p class="petit">Fond schématique (pas une image réelle de Mars). Clique sur un site.</p>
         </div>
-        <div id="verdict" class="verdict gris">Chargement…</div>
-        <p id="date-saison" class="petit"></p>
-        <div id="mesures" class="mesures"></div>
-        <h3>Pourquoi ce verdict ?</h3>
-        <div id="facteurs"></div>
-        <p id="alerte-anomalie" class="alerte" hidden></p>
-        <p class="petit" id="avertissement"></p>
-      </div>
-    </section>
 
-    <!-- 2. GRAPHIQUE -->
-    <section class="panneau">
-      <h2>📈 Indice de risque depuis 2012</h2>
-      <canvas id="graphique" width="1100" height="280"></canvas>
-      <p class="petit">Les points rouges sont les anomalies détectées par machine learning. Clique sur le graphique pour choisir un sol.</p>
-    </section>
-
-    <!-- 3. ANOMALIES + ASSISTANT -->
-    <section class="deux-colonnes">
-      <div class="panneau">
-        <h2>🤖 Anomalies détectées</h2>
-        <p class="petit" id="total-anomalies"></p>
-        <ul id="liste-anomalies" class="liste"></ul>
-      </div>
-
-      <div class="panneau">
-        <h2>💬 Assistant scientifique</h2>
-        <div id="exemples" class="exemples"></div>
-        <div id="discussion" class="discussion"></div>
-        <div class="saisie">
-          <input type="text" id="question" placeholder="Pose ta question…" />
-          <button id="btn-envoyer">Envoyer</button>
+        <div class="panneau" id="verdict-panneau">
+          <h2>🚦 Verdict de sortie</h2>
+          <div class="selecteur">
+            <label for="slider">Jour martien (sol) :</label>
+            <input type="range" id="slider" min="0" max="0" value="0" />
+            <strong id="sol-affiche">–</strong>
+            <button id="btn-dernier">Dernier sol</button>
+          </div>
+          <div id="verdict" class="verdict gris">Chargement…</div>
+          <p id="date-saison" class="petit"></p>
+          <div id="mesures" class="mesures"></div>
+          <h3>Pourquoi ce verdict ?</h3>
+          <div id="facteurs"></div>
+          <p id="alerte-anomalie" class="alerte" hidden></p>
+          <p class="petit" id="avertissement"></p>
         </div>
-      </div>
-    </section>
-  </main>
+      </section>
 
-  <footer>
-    Données : NASA Mars Weather Service / Curiosity REMS (cratère Gale). L'indice est pédagogique :
-    ce n'est pas un seuil de sécurité officiel de la NASA.
-  </footer>
+      <section class="panneau">
+        <h2>📈 Indice de risque depuis 2012</h2>
+        <canvas id="graphique" width="1100" height="280"></canvas>
+        <p class="petit">Les points rouges sont les anomalies détectées par machine learning. Clique sur le graphique pour choisir un sol.</p>
+      </section>
 
+      <section class="deux-colonnes">
+        <div class="panneau">
+          <h2>🤖 Anomalies détectées</h2>
+          <p class="petit" id="total-anomalies"></p>
+          <ul id="liste-anomalies" class="liste"></ul>
+        </div>
+        <div class="panneau">
+          <h2>💬 Assistant scientifique</h2>
+          <div id="exemples" class="exemples"></div>
+          <div id="discussion" class="discussion"></div>
+          <div class="saisie">
+            <input type="text" id="question" placeholder="Pose ta question…" />
+            <button id="btn-envoyer">Envoyer</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      Données : NASA Mars Weather Service / Curiosity REMS (cratère Gale). L'indice est pédagogique :
+      ce n'est pas un seuil de sécurité officiel de la NASA.
+    </footer>
+  </div>
+
+  <script src="/static/plexus.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
