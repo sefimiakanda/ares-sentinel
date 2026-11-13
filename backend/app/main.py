@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assistant, pipeline
+from . import assistant, config, pipeline  # config charge le fichier backend/.env
 from .sites import SITES
 
 app = FastAPI(title="Ares Sentinel", version="1.0.0")
@@ -41,6 +41,7 @@ def _detail_sol(sol: int) -> dict:
         "sol": sol,
         "date": l["terrestrial_date"],
         "saison": l["martian_season"],
+        "ls": l["solar_longitude_ls"],
         "saison_poussiere": l["saison_poussiere"],
         "mesures": {
             "temp_min_c": l["air_temp_min_c"],
