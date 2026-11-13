@@ -1,6 +1,13 @@
+# Environnement Python
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Secrets : ne jamais envoyer sur GitHub
 .env
+.env.*
+!.env.example
+
+# Divers
 .DS_Store
