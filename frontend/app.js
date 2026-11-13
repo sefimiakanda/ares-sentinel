@@ -22,7 +22,64 @@ async function api(url, options) {
   return reponse.json();
 }
 
-// ---------- CARTE ----------
+// ---------- CARTE RÉELLE : Leaflet + imagerie NASA Mars Trek ----------
+// Deux adresses de tuiles sont essayées. Si Leaflet ou les tuiles sont indisponibles, la carte dessinée (canvas) reste le plan B.
+const TUILES_MARS = [
+  "https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
+  "https://trek.nasa.gov/tiles/Mars/EQ/Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
+];
+let carteLeaflet = null, couchePins = null;
+
+function initCarte() {
+  if (!window.L) return; // Leaflet n'a pas pu se charger (hors ligne ?)
+  const zoneMars = document.getElementById("carte-mars"), zoneCanvas = document.getElementById("carte");
+  zoneMars.hidden = false; zoneCanvas.hidden = true;
+  try {
+    carteLeaflet = L.map("carte-mars", { crs: L.CRS.EPSG4326, center: [5, 107], zoom: 2, minZoom: 1, maxZoom: 8 });
+    let essai = 0, erreurs = 0, chargees = 0;
+    const couche = L.tileLayer(TUILES_MARS[0], {
+      maxNativeZoom: 7, noWrap: true,
+      attribution: "Imagerie : NASA / JPL / USGS (Viking MDIM 2.1) via Mars Trek",
+    }).addTo(carteLeaflet);
+    couche.on("tileload", () => { chargees++; });
+    couche.on("tileerror", () => {
+      if (chargees > 0 || ++erreurs < 6) return;   // quelques tuiles manquantes sont normales
+      erreurs = 0;
+      if (++essai < TUILES_MARS.length) couche.setUrl(TUILES_MARS[essai]);  // on tente l'autre adresse
+      else document.getElementById("carte-info").textContent = "⚠️ Fond NASA Mars Trek indisponible (réseau ?). Les sites restent affichés.";
+    });
+    couchePins = L.layerGroup().addTo(carteLeaflet);
+    document.getElementById("carte-info").textContent =
+      "Imagerie réelle de Mars (NASA Mars Trek). Gale est le seul site avec de vraies mesures. Molette ou boutons pour zoomer.";
+  } catch (e) {
+    console.error("Carte Leaflet impossible :", e);
+    carteLeaflet = null; zoneMars.hidden = true; zoneCanvas.hidden = false;
+  }
+}
+
+function majCarte() {
+  if (!carteLeaflet) return dessinerCarte();
+  couchePins.clearLayers();
+  for (const site of sites) {
+    const actif = site.donnees_reelles;
+    const icone = L.divIcon({
+      className: "", iconSize: [22, 22], iconAnchor: [11, 11],
+      html: `<div class="pin ${site.verdict.couleur}${actif ? " actif" : ""}"></div>`,
+    });
+    const aGauche = site.lon > 125; // près du bord droit : étiquette à gauche du point
+    const pin = L.marker([site.lat, site.lon], { icon: icone, title: site.nom }).addTo(couchePins);
+    pin.bindTooltip(
+      `<b>${site.nom}</b><br>${actif ? `${site.verdict.texte} (indice ${site.indice})` : "Pas de données"}`,
+      { permanent: true, direction: aGauche ? "left" : "right", offset: [aGauche ? -12 : 12, 0], className: "etiquette" }
+    );
+    pin.on("click", () => {
+      if (actif) document.getElementById("verdict-panneau").scrollIntoView({ behavior: "smooth" });
+      else alert(site.nom + "\nAltitude : " + site.altitude_km + " km\n\nPas de mesures dans cette version : je préfère ne pas inventer de verdict.");
+    });
+  }
+}
+
+// ---------- CARTE DESSINÉE (plan B) ----------
 // Fenêtre de la carte : on zoome sur la zone où sont les sites
 const VUE = { lonMin: 60, lonMax: 160, latMin: -40, latMax: 40 };
 
@@ -127,7 +184,10 @@ function montrerVue(nom) {
   document.querySelectorAll(".vue").forEach((v) => v.classList.toggle("actif", v.id === "vue-" + nom));
   document.querySelectorAll("#onglets button").forEach((b) => b.classList.toggle("actif", b.dataset.vue === nom));
   if (nom === "historique") dessinerGraphique();
-  if (nom === "tableau") dessinerCarte();
+  if (nom === "tableau") {
+    majCarte();
+    if (carteLeaflet) setTimeout(() => carteLeaflet.invalidateSize(), 50);
+  }
 }
 
 // Anime l'indice de 0 jusqu'à sa valeur
@@ -139,6 +199,34 @@ function compter(el, cible) {
     if (k < 1) requestAnimationFrame(pas);
   };
   requestAnimationFrame(pas);
+}
+
+const SAISONS = {
+  "Northern Spring / Southern Autumn": "Printemps au nord · Automne au sud",
+  "Northern Summer / Southern Winter": "Été au nord · Hiver au sud",
+  "Northern Autumn / Southern Spring (Dust Season)": "Automne au nord · Printemps au sud (saison des tempêtes de poussière)",
+  "Northern Winter / Southern Summer (Perihelion)": "Hiver au nord · Été au sud",
+};
+
+// Affiche : le jour martien, la date sur Terre (et son ancienneté), la saison sur Mars (en français)
+function afficherDates(d) {
+  const quand = new Date(d.date);
+  const jours = Math.round((Date.now() - quand.getTime()) / 86400000);
+  const lignes = [
+    ["Jour martien", `Sol ${d.sol}`, "24 h 39 min"],
+    ["Mesure du", quand.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }),
+      jours >= 0 ? `il y a ${jours} jour${jours > 1 ? "s" : ""}` : ""],
+    ["Saison sur Mars", SAISONS[d.saison] || d.saison, d.ls === null ? "" : `Ls ${Math.round(d.ls)}°`],
+  ];
+  const zone = document.getElementById("date-saison");
+  zone.innerHTML = "";
+  for (const [titre, valeur, note] of lignes) {
+    const l = document.createElement("div");
+    l.className = "ligne";
+    l.innerHTML = "<span></span><b></b><em></em>";
+    l.children[0].textContent = titre; l.children[1].textContent = valeur; l.children[2].textContent = note;
+    zone.append(l);
+  }
 }
 
 function afficherVerdict(d) {
@@ -153,11 +241,11 @@ function afficherVerdict(d) {
   if (window.Plexus) Plexus.setColor(COULEURS[d.verdict.couleur]); // le réseau Plexus prend la couleur du verdict
   const chip = document.getElementById("chip");
   chip.className = "chip " + d.verdict.couleur;
-  chip.textContent = `Sol ${d.sol} · ${d.verdict.texte}`;
+  const dateCourte = new Date(d.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+  chip.textContent = `Sol ${d.sol} (${dateCourte}) · ${d.verdict.texte}`;
 
   document.getElementById("sol-affiche").textContent = "Sol " + d.sol;
-  document.getElementById("date-saison").textContent =
-    `${d.date} · ${d.saison}` + (d.saison_poussiere ? " · saison des tempêtes de poussière" : "");
+  afficherDates(d);
 
   const m = d.mesures;
   const valeur = (v, u) => (v === null ? "–" : v + u);
@@ -205,7 +293,7 @@ async function choisirSol(sol) {
   document.getElementById("lecture-graphique").textContent = detail.indice === null
     ? `Sol ${sol} (${detail.date}) : mesures manquantes, pas de verdict.`
     : `Sol ${sol} (${detail.date}) : indice ${detail.indice}/100, ${detail.verdict.texte.toLowerCase()}.`;
-  dessinerCarte();
+  majCarte();
   dessinerGraphique();
   const idx = solsValides.findIndex((p) => p.sol === sol);
   if (idx >= 0) document.getElementById("slider").value = idx;
@@ -400,6 +488,7 @@ async function demarrer() {
     document.getElementById("btn-dernier").onclick = () => choisirSol(solsValides[solsValides.length - 1].sol);
     document.getElementById("carte").onclick = cliquerCarte;
     document.querySelectorAll("#onglets button").forEach((b) => (b.onclick = () => montrerVue(b.dataset.vue)));
+    initCarte();
     document.getElementById("graphique").onclick = cliquerGraphique;
     document.getElementById("btn-envoyer").onclick = () => poserQuestion(document.getElementById("question").value);
     document.getElementById("question").onkeydown = (e) => { if (e.key === "Enter") poserQuestion(e.target.value); };
@@ -413,7 +502,7 @@ async function demarrer() {
     }
 
     await choisirSol(solsValides[solsValides.length - 1].sol);
-    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!carteLeaflet && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
       (function boucleCarte() {
         if (document.getElementById("vue-tableau").classList.contains("actif")) dessinerCarte();
         requestAnimationFrame(boucleCarte);
@@ -423,8 +512,8 @@ async function demarrer() {
     const sante = await api("/api/sante");
     ajouterMessage(
       "ia",
-      sante.assistant === "ollama"
-        ? `Bonjour ! Je suis branché sur un LLM local gratuit (Ollama, modèle ${sante.assistant_modele}). Je ne cite que les chiffres que mes outils lisent dans les données de Curiosity. Essaie un des exemples ci-dessus.`
+      sante.assistant !== "regles"
+        ? `Bonjour ! Je suis branché sur un LLM (${sante.assistant === "gemini" ? "Google Gemini" : "Ollama, en local"}, modèle ${sante.assistant_modele}). Je ne cite que les chiffres que mes outils lisent dans les données de Curiosity. Essaie un des exemples ci-dessus.`
         : `Bonjour ! Mode sans LLM : ${EN_LOCAL ? sante.assistant_raison + " " : ""}En attendant, je réponds avec des règles, uniquement à partir des mesures de Curiosity.`
     );
   } catch (e) {

@@ -89,5 +89,23 @@ button.secondaire:hover, .exemples button:hover { border-color: var(--accent); b
 
 footer { max-width: 800px; margin: 0 auto; padding: 24px 16px 40px; text-align: center; color: var(--discret); font-size: .8rem; }
 
+/* Carte réelle (Leaflet + NASA Mars Trek) */
+.carte-mars { height: 460px; border-radius: 10px; background: #0f1626; overflow: hidden; }
+.leaflet-container { font: inherit; background: #0f1626; }
+.pin { width: 20px; height: 20px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, .4); }
+.pin.vert { background: var(--vert); } .pin.orange { background: var(--orange); } .pin.rouge { background: var(--rouge); }
+.pin.gris { background: var(--gris); border-color: rgba(255, 255, 255, .55); }
+.pin.actif { animation: pouls 1.8s ease-out infinite; }
+.etiquette { background: rgba(11, 18, 32, .9); border: 1px solid var(--bord); color: #fff; font-size: 12px; line-height: 1.35; border-radius: 6px; padding: 4px 8px; box-shadow: none; }
+.leaflet-tooltip-left.etiquette::before, .leaflet-tooltip-right.etiquette::before { display: none; }
+
+/* Dates et saison */
+.dates { margin-top: 12px; display: grid; gap: 6px; }
+.dates .ligne { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px; align-items: baseline; font-size: .9rem; padding: 8px 10px; background: var(--carte); border-radius: 8px; }
+.dates .ligne span { color: var(--discret); font-size: .8rem; } .dates .ligne em { color: var(--discret); font-style: normal; font-size: .8rem; }
+.aide { margin-top: 10px; font-size: .85rem; color: var(--discret); }
+.aide summary { cursor: pointer; color: var(--accent); }
+.aide p { margin: 8px 0 0; } .aide b { color: var(--texte); }
+@keyframes pouls { 0% { box-shadow: 0 0 0 2px rgba(0, 0, 0, .4), 0 0 0 0 rgba(255, 255, 255, .6); } 100% { box-shadow: 0 0 0 2px rgba(0, 0, 0, .4), 0 0 0 18px rgba(255, 255, 255, 0); } }
 @keyframes apparition { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ares Sentinel – Sortie sur Mars : est-ce sûr ?</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -30,8 +31,9 @@
       <div class="grille-2">
         <div class="panneau">
           <h2>Carte de Mars</h2>
+          <div id="carte-mars" class="carte-mars" hidden></div>
           <canvas id="carte" width="900" height="560"></canvas>
-          <p class="petit">Fond schématique (pas une image réelle de Mars). Gale est le seul site avec de vraies mesures.</p>
+          <p id="carte-info" class="petit">Fond schématique (la carte NASA n'a pas pu se charger). Gale est le seul site avec de vraies mesures.</p>
         </div>
 
         <div class="panneau" id="verdict-panneau">
@@ -43,7 +45,13 @@
           </div>
           <button id="btn-dernier" class="secondaire">Revenir au dernier sol</button>
           <div id="verdict" class="verdict gris">Chargement…</div>
-          <p id="date-saison" class="petit"></p>
+          <div id="date-saison" class="dates"></div>
+          <details class="aide">
+            <summary>Comprendre ces dates</summary>
+            <p><b>Qu'est-ce qu'un sol ?</b> Un sol est un jour martien : 24 h 39 min. Le sol 0 est le jour de l'arrivée du rover Curiosity (6 août 2012).</p>
+            <p><b>Pourquoi pas la date d'aujourd'hui ?</b> Ares Sentinel ne reçoit pas de mesures en direct. Il lit une copie des données de la NASA enregistrée dans le projet : elle s'arrête à sa dernière mesure. « Aujourd'hui » veut donc dire « le dernier jour de cette copie ». Pour des jours plus récents, il faut mettre à jour le fichier de données.</p>
+            <p><b>Les saisons.</b> Mars a des saisons comme la Terre, mais son année dure 687 jours terrestres, et les saisons sont inversées entre les deux hémisphères (hiver au nord = été au sud). <b>Ls</b> indique la position de Mars sur son orbite, de 0° à 360° : 0° début du printemps au nord, 90° été, 180° automne, 270° hiver.</p>
+          </details>
           <div id="mesures" class="mesures"></div>
         </div>
       </div>
@@ -90,6 +98,7 @@
     Données : NASA Mars Weather Service / Curiosity REMS (cratère Gale). L'indice est pédagogique : ce n'est pas un seuil de sécurité officiel de la NASA.
   </footer>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/static/plexus.js"></script>
   <script src="/static/app.js"></script>
 </body>
