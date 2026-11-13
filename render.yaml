@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+#
+# Render Blueprint for Ares Sentinel.
+# How to use: push this file to the ROOT of your GitHub repo, then on Render:
+#   New + -> Blueprint -> select the repo -> Apply. Render will ask you for the secret value(s) below.
+#
+# One single web service: FastAPI computes the verdicts AND serves the web page (frontend/).
+
+services:
+  - type: web
+    name: ares-sentinel
+    runtime: python
+    plan: free                      # free plan: the service sleeps after a while without visits
+    branch: main                    # every push on this branch redeploys the site
+    # No rootDir on purpose: the code reads ../data and ../frontend, which live outside backend/.
+    buildCommand: cd backend && uv sync --frozen --no-dev
+    startCommand: cd backend && uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/sante     # Render checks that the server answers here
+    envVars:
+      - key: PYTHON_VERSION         # pyproject.toml asks for Python >= 3.12
+        value: 3.12.11
+      - key: GEMINI_API_KEY         # SECRET: never written here. Render prompts you for it (Google AI Studio key).
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
