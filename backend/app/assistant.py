@@ -203,18 +203,19 @@ def repondre_regles(question: str, sol_choisi=None) -> dict:
 
 
 def repondre(question: str, sol_choisi=None) -> dict:
-    """Point d'entrée : LLM local (Ollama) s'il est prêt, sinon assistant à règles."""
+    """Point d'entrée : LLM (Gemini ou Ollama) s'il est prêt, sinon assistant à règles."""
     from . import llm
 
-    if llm.disponible():
+    choix = llm.fournisseur()
+    if choix:
         try:
-            return llm.repondre_llm(question, sol_choisi)
+            return llm.repondre_avec(choix, question, sol_choisi)
         except llm.LLMSansOutil:
             r = repondre_regles(question, sol_choisi)
             r["type"] = "assistant à règles (secours : le LLM n'a consulté aucune donnée)"
             return r
-        except Exception as e:  # Ollama a planté, timeout, réponse bizarre... : on bascule sur le secours
-            print(f"[assistant] LLM indisponible ({type(e).__name__}: {e}) -> mode règles")
+        except Exception as e:  # clé refusée, quota, panne, timeout... : on bascule sur le secours
+            print(f"[assistant] LLM {choix} indisponible ({type(e).__name__}: {e}) -> mode règles")
             r = repondre_regles(question, sol_choisi)
             r["type"] = "assistant à règles (secours : le LLM n'a pas répondu)"
             return r
@@ -226,4 +227,4 @@ def etat_llm() -> dict:
     from . import llm
 
     e = llm.etat()
-    return {"assistant": "ollama" if e["pret"] else "regles", "assistant_modele": e["modele"], "assistant_raison": e["raison"]}
+    return {"assistant": e["fournisseur"] or "regles", "assistant_modele": e["modele"], "assistant_raison": e["raison"]}
