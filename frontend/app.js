@@ -1,6 +1,6 @@
 // Ares Sentinel - frontend en JavaScript simple (aucun framework).
 
-const COULEURS = { vert: "#3ddc97", orange: "#ffb347", rouge: "#ff5a4d", gris: "#8a8f98" };
+const COULEURS = { vert: "#34d399", orange: "#fbbf24", rouge: "#f87171", gris: "#8b97ad" };
 const EN_LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
 const NOMS_FACTEURS = {
   froid: "❄️ Froid",
@@ -32,28 +32,34 @@ function versPixel(lon, lat, canvas) {
   return { x, y };
 }
 
+// Facteur d'agrandissement : garde les textes lisibles quand la carte est affichée petite (mobile)
+function echelleCarte(canvas) {
+  return Math.max(1, 640 / (canvas.getBoundingClientRect().width || 640));
+}
+
 function dessinerCarte() {
   const canvas = document.getElementById("carte");
   const ctx = canvas.getContext("2d");
+  const e = echelleCarte(canvas);
 
   // Fond
   const fond = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  fond.addColorStop(0, "#5a2a1c");
-  fond.addColorStop(1, "#2e150f");
+  fond.addColorStop(0, "#1b2740");
+  fond.addColorStop(1, "#0f1626");
   ctx.fillStyle = fond;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Grille (tous les 20° de longitude, 20° de latitude)
   ctx.strokeStyle = "rgba(255,255,255,0.12)";
   ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.font = "13px sans-serif";
+  ctx.font = `${Math.round(12 * e)}px sans-serif`;
   ctx.lineWidth = 1;
   for (let lon = VUE.lonMin; lon <= VUE.lonMax; lon += 20) {
     const { x } = versPixel(lon, 0, canvas);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-    ctx.fillText(lon + "°E", x + 4, canvas.height - 6);
+    ctx.fillText(lon + "°E", x + 4, canvas.height - 6 * e);
   }
-  for (let lat = VUE.latMin; lat <= VUE.latMax; lat += 20) {
+  for (let lat = VUE.latMin + 20; lat <= VUE.latMax; lat += 20) {
     const { y } = versPixel(VUE.lonMin, lat, canvas);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     ctx.fillText(lat + "°", 6, y - 4);
@@ -70,7 +76,7 @@ function dessinerCarte() {
     const actif = site.donnees_reelles;
 
     ctx.beginPath();
-    ctx.arc(x, y, actif ? 16 : 11, 0, Math.PI * 2);
+    ctx.arc(x, y, (actif ? 16 : 11) * e, 0, Math.PI * 2);
     ctx.fillStyle = couleur;
     ctx.fill();
     ctx.lineWidth = 3;
@@ -79,18 +85,21 @@ function dessinerCarte() {
 
     if (actif) { // anneau qui pulse autour du site actif
       const t = (performance.now() % 1800) / 1800;
-      ctx.beginPath(); ctx.arc(x, y, 16 + t * 24, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(x, y, (16 + t * 24) * e, 0, Math.PI * 2);
       ctx.strokeStyle = couleur; ctx.globalAlpha = 1 - t; ctx.lineWidth = 2; ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
+    const aGauche = x > canvas.width * 0.6;   // près du bord droit : texte à gauche du point
+    const dx = (aGauche ? -24 : 24) * e;
+    ctx.textAlign = aGauche ? "right" : "left";
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 14px sans-serif";
-    ctx.fillText(site.nom, x + 22, y + 5);
-    ctx.font = "12px sans-serif";
-    ctx.fillStyle = "rgba(255,255,255,0.75)";
-    const sousTitre = actif ? `${site.verdict.texte} (indice ${site.indice})` : site.verdict.texte;
-    ctx.fillText(sousTitre, x + 22, y + 21);
+    ctx.font = `bold ${Math.round(14 * e)}px sans-serif`;
+    ctx.fillText(site.nom, x + dx, y + 4 * e);
+    ctx.font = `${Math.round(12 * e)}px sans-serif`;
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.fillText(actif ? `${site.verdict.texte} (indice ${site.indice})` : "Pas de données", x + dx, y + 21 * e);
+    ctx.textAlign = "left";
   }
 }
 
@@ -101,7 +110,7 @@ function cliquerCarte(evenement) {
   const y = (evenement.clientY - rect.top) * (canvas.height / rect.height);
   for (const site of sites) {
     const p = versPixel(site.lon, site.lat, canvas);
-    if (Math.hypot(p.x - x, p.y - y) < 22) {
+    if (Math.hypot(p.x - x, p.y - y) < 22 * echelleCarte(canvas)) {
       if (site.donnees_reelles) {
         document.getElementById("verdict-panneau").scrollIntoView({ behavior: "smooth" });
       } else {
@@ -113,6 +122,14 @@ function cliquerCarte(evenement) {
 }
 
 // ---------- VERDICT ----------
+// Change d'onglet (tableau, historique, anomalies, assistant)
+function montrerVue(nom) {
+  document.querySelectorAll(".vue").forEach((v) => v.classList.toggle("actif", v.id === "vue-" + nom));
+  document.querySelectorAll("#onglets button").forEach((b) => b.classList.toggle("actif", b.dataset.vue === nom));
+  if (nom === "historique") dessinerGraphique();
+  if (nom === "tableau") dessinerCarte();
+}
+
 // Anime l'indice de 0 jusqu'à sa valeur
 function compter(el, cible) {
   const debut = performance.now(), duree = 700;
@@ -134,6 +151,9 @@ function afficherVerdict(d) {
   else compter(petit, d.indice);
   boite.append(petit);
   if (window.Plexus) Plexus.setColor(COULEURS[d.verdict.couleur]); // le réseau Plexus prend la couleur du verdict
+  const chip = document.getElementById("chip");
+  chip.className = "chip " + d.verdict.couleur;
+  chip.textContent = `Sol ${d.sol} · ${d.verdict.texte}`;
 
   document.getElementById("sol-affiche").textContent = "Sol " + d.sol;
   document.getElementById("date-saison").textContent =
@@ -182,6 +202,9 @@ async function choisirSol(sol) {
   const [detail, carte] = await Promise.all([api("/api/sortie/" + sol), api("/api/carte?sol=" + sol)]);
   sites = carte.sites;
   afficherVerdict(detail);
+  document.getElementById("lecture-graphique").textContent = detail.indice === null
+    ? `Sol ${sol} (${detail.date}) : mesures manquantes, pas de verdict.`
+    : `Sol ${sol} (${detail.date}) : indice ${detail.indice}/100, ${detail.verdict.texte.toLowerCase()}.`;
   dessinerCarte();
   dessinerGraphique();
   const idx = solsValides.findIndex((p) => p.sol === sol);
@@ -203,7 +226,7 @@ function dessinerGraphique() {
   if (!points.length) return;
   const canvas = document.getElementById("graphique");
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#1a0f0d";
+  ctx.fillStyle = "#0f1626";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Axes et seuils
@@ -220,13 +243,13 @@ function dessinerGraphique() {
     ctx.fillStyle = couleur;
     ctx.fillText(nom + " ≥ " + valeur.toFixed(0), MARGE.gauche + 6, y - 4);
   }
-  ctx.fillStyle = "#b59a90";
+  ctx.fillStyle = "#8fa0bd";
   for (const v of [0, 50, 100]) ctx.fillText(v, 8, yDe(v, canvas) + 4);
   const maxSol = points[points.length - 1].sol;
   for (let s = 0; s <= maxSol; s += 1000) ctx.fillText("sol " + s, xDe(s, canvas) - 14, canvas.height - 6);
 
   // Courbe
-  ctx.strokeStyle = "#e2572b";
+  ctx.strokeStyle = "#5b9dff";
   ctx.lineWidth = 1;
   ctx.beginPath();
   let enCours = false;
@@ -238,7 +261,7 @@ function dessinerGraphique() {
   ctx.stroke();
 
   // Anomalies
-  ctx.fillStyle = COULEURS.rouge;
+  ctx.fillStyle = "#fbbf24";
   for (const p of points) {
     if (p.anomalie && p.indice !== null) {
       ctx.beginPath();
@@ -284,7 +307,7 @@ async function chargerAnomalies() {
     pastille.className = "pastille";
     pastille.style.background = COULEURS[couleur];
     li.append(pastille, `Sol ${a.sol} (${a.date}) – ${a.raison} – intensité ${a.intensite}/100`);
-    li.onclick = () => { choisirSol(a.sol); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    li.onclick = () => { choisirSol(a.sol); montrerVue("tableau"); };
     liste.append(li);
   }
 }
@@ -337,7 +360,7 @@ function construireReponse(r) {
     const b = document.createElement("button");
     b.textContent = "Voir le sol " + r.sol_cite;
     b.style.marginTop = "6px";
-    b.onclick = () => { choisirSol(r.sol_cite); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    b.onclick = () => { choisirSol(r.sol_cite); montrerVue("tableau"); };
     conteneur.append(b);
   }
   return conteneur;
@@ -376,6 +399,7 @@ async function demarrer() {
     slider.oninput = () => choisirSol(solsValides[Number(slider.value)].sol);
     document.getElementById("btn-dernier").onclick = () => choisirSol(solsValides[solsValides.length - 1].sol);
     document.getElementById("carte").onclick = cliquerCarte;
+    document.querySelectorAll("#onglets button").forEach((b) => (b.onclick = () => montrerVue(b.dataset.vue)));
     document.getElementById("graphique").onclick = cliquerGraphique;
     document.getElementById("btn-envoyer").onclick = () => poserQuestion(document.getElementById("question").value);
     document.getElementById("question").onkeydown = (e) => { if (e.key === "Enter") poserQuestion(e.target.value); };
@@ -390,7 +414,10 @@ async function demarrer() {
 
     await choisirSol(solsValides[solsValides.length - 1].sol);
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      (function boucleCarte() { dessinerCarte(); requestAnimationFrame(boucleCarte); })();
+      (function boucleCarte() {
+        if (document.getElementById("vue-tableau").classList.contains("actif")) dessinerCarte();
+        requestAnimationFrame(boucleCarte);
+      })();
     }
     await chargerAnomalies();
     const sante = await api("/api/sante");
