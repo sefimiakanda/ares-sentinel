@@ -7,18 +7,26 @@ Comment ça marche :
   4. Le modèle rédige la réponse finale à partir de ces résultats.
   5. Un vérificateur contrôle que les chiffres cités viennent bien des outils.
 
-Tout tourne sur ton ordinateur : pas de clé API, pas de compte, pas de coût.
-On parle à Ollama en HTTP simple (module standard urllib, rien à installer).
+Deux fournisseurs possibles, avec la MÊME logique d'outils et les MÊMES garde-fous :
+  - Gemini (Google AI Studio, gratuit avec quotas) : marche aussi en ligne (Render).
+  - Ollama (local, gratuit, sans clé) : marche sur ton ordinateur.
+On parle aux deux en HTTP simple (module standard urllib, rien à installer).
 
-Réglages (variables d'environnement, tous optionnels) :
-  OLLAMA_MODEL  modèle à utiliser           (défaut : qwen2.5:7b)
-  OLLAMA_HOST   adresse du serveur Ollama   (défaut : http://localhost:11434)
+Réglages (variables d'environnement ou fichier backend/.env, tous optionnels) :
+  GEMINI_API_KEY  clé Google AI Studio     (si présente, Gemini est utilisé)
+  GEMINI_MODEL    modèle Gemini            (défaut : gemini-2.5-flash)
+  LLM_PROVIDER    "gemini" ou "ollama" pour forcer un choix
+  OLLAMA_MODEL    modèle Ollama            (défaut : qwen2.5:7b)
+  OLLAMA_HOST     adresse d'Ollama         (défaut : http://localhost:11434)
 """
 
 import json
 import os
 import re
+import urllib.error
 import urllib.request
+
+from . import config  # noqa: F401  (charge backend/.env)
 
 MAX_TOURS = 4            # nombre maximum d'allers-retours avec les outils
 MAX_QUESTION = 500       # on coupe les questions trop longues
@@ -88,7 +96,7 @@ def _appeler_ollama(payload: dict) -> dict:
     return _requete("/api/chat", payload, timeout=180)
 
 
-def etat() -> dict:
+def etat_ollama() -> dict:
     """Ollama est-il lancé ET le modèle est-il téléchargé ?"""
     modele = _modele()
     try:
@@ -106,6 +114,35 @@ def etat() -> dict:
     if cible not in noms:
         return {"pret": False, "modele": modele, "raison": f"Modèle absent : lance « ollama pull {modele} »."}
     return {"pret": True, "modele": modele, "raison": ""}
+
+
+def _cle_gemini() -> str:
+    return os.environ.get("GEMINI_API_KEY", "").strip()
+
+
+def _modele_gemini() -> str:
+    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def fournisseur():
+    """Quel LLM utiliser ? "gemini", "ollama", ou None (alors : assistant à règles)."""
+    choix = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if choix != "ollama" and _cle_gemini():
+        return "gemini"
+    if choix != "gemini" and etat_ollama()["pret"]:
+        return "ollama"
+    return None
+
+
+def etat() -> dict:
+    """État global de l'assistant (affiché dans l'interface)."""
+    if fournisseur() == "gemini":
+        return {"pret": True, "fournisseur": "gemini", "modele": _modele_gemini(), "raison": ""}
+    e = etat_ollama()
+    e["fournisseur"] = "ollama" if e["pret"] else None
+    if not e["pret"] and os.environ.get("LLM_PROVIDER", "").lower() == "gemini":
+        e["raison"] = "Aucune clé GEMINI_API_KEY trouvée (fichier backend/.env ou variable d'environnement)."
+    return e
 
 
 def disponible() -> bool:
@@ -205,6 +242,24 @@ def chiffres_non_verifies(texte_reponse: str, resultats_outils: list, question: 
 
 # ---------- Le cœur : la boucle question -> outils -> réponse ----------
 
+def _finaliser(texte, resultats, entree, sol_cite, outils_utilises, etiquette):
+    """Met en forme la réponse du modèle et lance le vérificateur de chiffres."""
+    from .assistant import LIMITE_GENERALE
+
+    parties = decouper_reponse(texte)
+    suspects = chiffres_non_verifies(parties["constat"] + "\n" + "\n".join(parties["preuves"]), resultats, entree)
+    return {
+        "constat": parties["constat"],
+        "preuves": parties["preuves"],
+        "limites": parties["limites"] or LIMITE_GENERALE,
+        "source": "NASA Mars Weather Service / Curiosity REMS (cache local)",
+        "sol_cite": sol_cite,
+        "type": etiquette,
+        "outils_utilises": outils_utilises,
+        "chiffres_non_verifies": suspects,
+    }
+
+
 def repondre_llm(question: str, sol_choisi=None, appeler=None) -> dict:
     """Pose la question au modèle et retourne un dictionnaire prêt pour le frontend."""
     from .assistant import LIMITE_GENERALE
@@ -237,20 +292,10 @@ def repondre_llm(question: str, sol_choisi=None, appeler=None) -> dict:
         if not appels:  # réponse finale
             if not outils_utilises:
                 raise LLMSansOutil("le modèle a répondu sans consulter les données")
-            parties = decouper_reponse(message.get("content", ""))
-            suspects = chiffres_non_verifies(
-                parties["constat"] + "\n" + "\n".join(parties["preuves"]), resultats, question + contexte
+            return _finaliser(
+                message.get("content", ""), resultats, question + contexte, sol_cite, outils_utilises,
+                f"LLM local Ollama ({_modele()}) + outils sur données réelles",
             )
-            return {
-                "constat": parties["constat"],
-                "preuves": parties["preuves"],
-                "limites": parties["limites"] or LIMITE_GENERALE,
-                "source": "NASA Mars Weather Service / Curiosity REMS (cache local)",
-                "sol_cite": sol_cite,
-                "type": f"LLM local Ollama ({_modele()}) + outils sur données réelles",
-                "outils_utilises": outils_utilises,
-                "chiffres_non_verifies": suspects,
-            }
 
         # Le modèle demande des outils : on les exécute et on lui renvoie les résultats
         messages.append(message)
@@ -264,3 +309,88 @@ def repondre_llm(question: str, sol_choisi=None, appeler=None) -> dict:
             messages.append({"role": "tool", "tool_name": nom, "content": texte_json})
 
     raise RuntimeError("Trop d'allers-retours avec les outils")
+
+
+# ---------- Gemini (Google AI Studio) ----------
+
+def _base_gemini() -> str:
+    return os.environ.get("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+
+
+def _appeler_gemini(payload: dict) -> dict:
+    url = f"{_base_gemini()}/models/{_modele_gemini()}:generateContent"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "x-goog-api-key": _cle_gemini()},  # la clé reste dans l'en-tête
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as reponse:
+            return json.loads(reponse.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:  # on garde le message d'erreur de Google (sans jamais afficher la clé)
+        raise RuntimeError(f"Gemini a répondu HTTP {e.code} : {e.read().decode('utf-8', 'replace')[:300]}") from None
+
+
+def _declarations_gemini():
+    from . import outils
+
+    declarations = []
+    for d in outils.DEFINITIONS:
+        item = {"name": d["name"], "description": d["description"]}
+        if d["input_schema"]["properties"]:  # un outil sans argument n'a pas de « parameters »
+            item["parameters"] = {"type": "object", "properties": d["input_schema"]["properties"]}
+        declarations.append(item)
+    return [{"functionDeclarations": declarations}]
+
+
+def repondre_gemini(question: str, sol_choisi=None, appeler=None) -> dict:
+    """Même boucle que pour Ollama, au format de l'API Gemini."""
+    appeler = appeler or _appeler_gemini
+    question = question.strip()[:MAX_QUESTION]
+    contexte = f"\n\n(Contexte de l'interface : l'utilisateur regarde le sol {int(sol_choisi)}.)" if sol_choisi else ""
+    messages = [{"role": "user", "parts": [{"text": question + contexte}]}]
+    sol_cite, outils_utilises, resultats = None, [], []
+
+    for _ in range(MAX_TOURS):
+        data = appeler(
+            {
+                "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                "contents": messages,
+                "tools": _declarations_gemini(),
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
+            }
+        )
+        try:
+            contenu = data["candidates"][0]["content"]
+        except (KeyError, IndexError):
+            raise RuntimeError("Réponse Gemini vide ou bloquée") from None
+        parties = contenu.get("parts", [])
+        appels = [p["functionCall"] for p in parties if "functionCall" in p]
+
+        if not appels:  # réponse finale
+            if not outils_utilises:
+                raise LLMSansOutil("le modèle a répondu sans consulter les données")
+            texte = "".join(p.get("text", "") for p in parties if "text" in p and not p.get("thought"))
+            return _finaliser(texte, resultats, question + contexte, sol_cite, outils_utilises,
+                              f"LLM Gemini ({_modele_gemini()}) + outils sur données réelles")
+
+        messages.append(contenu)  # on garde le message du modèle tel quel (Gemini en a besoin pour la suite)
+        reponses = []
+        for appel in appels:
+            nom = appel["name"]
+            texte_json, erreur = _executer_outil(nom, appel.get("args"))
+            outils_utilises.append(nom)
+            resultats.append(texte_json)
+            if nom == "obtenir_sortie" and not erreur:
+                sol_cite = json.loads(texte_json).get("sol")
+            reponses.append({"functionResponse": {"name": nom, "response": {"result": json.loads(texte_json)}}})
+        messages.append({"role": "user", "parts": reponses})
+
+    raise RuntimeError("Trop d'allers-retours avec les outils")
+
+
+def repondre_avec(fournisseur_choisi: str, question: str, sol_choisi=None) -> dict:
+    if fournisseur_choisi == "gemini":
+        return repondre_gemini(question, sol_choisi)
+    return repondre_llm(question, sol_choisi)
