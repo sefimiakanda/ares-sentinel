@@ -7,69 +7,88 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <canvas id="plexus" aria-hidden="true"></canvas>
+  <header class="hero">
+    <!-- Le style en ligne garantit que ce canvas ne pousse jamais le contenu, même si le CSS tarde à charger -->
+    <canvas id="plexus" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+    <div class="hero-contenu">
+      <p class="surtitre">NASA DATA + IA</p>
+      <h1>Ares Sentinel</h1>
+      <p class="accroche">La carte intelligente qui aide les premiers astronautes à décider si une sortie sur Mars est sûre.</p>
+      <div id="chip" class="chip gris">Chargement…</div>
+    </div>
+  </header>
 
-  <div class="page">
-    <header>
-      <h1>🛡️ Ares Sentinel</h1>
-      <p>La carte intelligente qui aide les premiers astronautes à décider si une sortie sur Mars est sûre.</p>
-    </header>
+  <nav class="onglets" id="onglets">
+    <button data-vue="tableau" class="actif">Tableau de bord</button>
+    <button data-vue="historique">Historique</button>
+    <button data-vue="anomalies">Anomalies</button>
+    <button data-vue="assistant">Assistant</button>
+  </nav>
 
-    <main>
-      <section class="carte-verdict">
+  <main>
+    <section class="vue actif" id="vue-tableau">
+      <div class="grille-2">
         <div class="panneau">
-          <h2>🗺️ Carte interactive</h2>
-          <canvas id="carte" width="800" height="560"></canvas>
-          <p class="petit">Fond schématique (pas une image réelle de Mars). Clique sur un site.</p>
+          <h2>Carte de Mars</h2>
+          <canvas id="carte" width="900" height="560"></canvas>
+          <p class="petit">Fond schématique (pas une image réelle de Mars). Gale est le seul site avec de vraies mesures.</p>
         </div>
 
         <div class="panneau" id="verdict-panneau">
-          <h2>🚦 Verdict de sortie</h2>
+          <h2>Verdict de sortie</h2>
           <div class="selecteur">
-            <label for="slider">Jour martien (sol) :</label>
+            <label for="slider">Jour martien</label>
             <input type="range" id="slider" min="0" max="0" value="0" />
             <strong id="sol-affiche">–</strong>
-            <button id="btn-dernier">Dernier sol</button>
           </div>
+          <button id="btn-dernier" class="secondaire">Revenir au dernier sol</button>
           <div id="verdict" class="verdict gris">Chargement…</div>
           <p id="date-saison" class="petit"></p>
           <div id="mesures" class="mesures"></div>
-          <h3>Pourquoi ce verdict ?</h3>
-          <div id="facteurs"></div>
-          <p id="alerte-anomalie" class="alerte" hidden></p>
-          <p class="petit" id="avertissement"></p>
         </div>
-      </section>
+      </div>
 
-      <section class="panneau">
-        <h2>📈 Indice de risque depuis 2012</h2>
-        <canvas id="graphique" width="1100" height="280"></canvas>
-        <p class="petit">Les points rouges sont les anomalies détectées par machine learning. Clique sur le graphique pour choisir un sol.</p>
-      </section>
+      <div class="panneau">
+        <h2>Pourquoi ce verdict ?</h2>
+        <div id="facteurs"></div>
+        <p id="alerte-anomalie" class="alerte" hidden></p>
+        <p class="petit" id="avertissement"></p>
+      </div>
+    </section>
 
-      <section class="deux-colonnes">
-        <div class="panneau">
-          <h2>🤖 Anomalies détectées</h2>
-          <p class="petit" id="total-anomalies"></p>
-          <ul id="liste-anomalies" class="liste"></ul>
+    <section class="vue" id="vue-historique">
+      <div class="panneau">
+        <h2>Indice de risque depuis 2012</h2>
+        <canvas id="graphique" width="1100" height="320"></canvas>
+        <p id="lecture-graphique" class="lecture"></p>
+        <p class="petit">Les points jaunes sont les anomalies détectées par machine learning. Clique sur le graphique pour choisir un sol.</p>
+      </div>
+    </section>
+
+    <section class="vue" id="vue-anomalies">
+      <div class="panneau">
+        <h2>Anomalies détectées</h2>
+        <p class="petit" id="total-anomalies"></p>
+        <ul id="liste-anomalies" class="liste"></ul>
+      </div>
+    </section>
+
+    <section class="vue" id="vue-assistant">
+      <div class="panneau assistant">
+        <h2>Assistant scientifique</h2>
+        <div id="exemples" class="exemples"></div>
+        <div id="discussion" class="discussion"></div>
+        <div class="saisie">
+          <input type="text" id="question" placeholder="Pose ta question sur Mars…" />
+          <button id="btn-envoyer">Envoyer</button>
         </div>
-        <div class="panneau">
-          <h2>💬 Assistant scientifique</h2>
-          <div id="exemples" class="exemples"></div>
-          <div id="discussion" class="discussion"></div>
-          <div class="saisie">
-            <input type="text" id="question" placeholder="Pose ta question…" />
-            <button id="btn-envoyer">Envoyer</button>
-          </div>
-        </div>
-      </section>
-    </main>
+      </div>
+    </section>
+  </main>
 
-    <footer>
-      Données : NASA Mars Weather Service / Curiosity REMS (cratère Gale). L'indice est pédagogique :
-      ce n'est pas un seuil de sécurité officiel de la NASA.
-    </footer>
-  </div>
+  <footer>
+    Données : NASA Mars Weather Service / Curiosity REMS (cratère Gale). L'indice est pédagogique : ce n'est pas un seuil de sécurité officiel de la NASA.
+  </footer>
 
   <script src="/static/plexus.js"></script>
   <script src="/static/app.js"></script>
