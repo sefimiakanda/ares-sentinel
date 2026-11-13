@@ -9,7 +9,9 @@
 services:
   - type: web
     name: ares-sentinel
-    runtime: python
+    runtime: python                 # Render runs the Python set in PYTHON_VERSION below (3.12).
+                                    # backend/pyproject.toml must say requires-python = ">=3.12" (NOT a newer one),
+                                    # and there must be no .python-version file asking for a newer Python.
     plan: free                      # free plan: the service sleeps after a while without visits
     branch: main                    # every push on this branch redeploys the site
     # No rootDir on purpose: the code reads ../data and ../frontend, which live outside backend/.
