@@ -20,7 +20,7 @@ An analysis platform built on **NASA data + AI** for Mars exploration: an intera
 |---|---|
 | 🌐 **Live demo** | https://ares-sentinel.onrender.com *(replace with your own Render URL once deployed)* |
 | 🎥 **Video** | https://www.youtube.com/watch?v=YOUR_VIDEO_ID *(replace with your video link)* |
-| 💻 **Source code** | https://github.com/YOUR-USERNAME/ares-sentinel *(replace)* |
+| 💻 **Source code** | https://github.com/sefimiakanda/ares-sentinel *(replace)* |
 
 ### Screenshots
 

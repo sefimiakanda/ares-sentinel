@@ -20,7 +20,7 @@ Une plateforme d'analyse scientifique **NASA Data + IA** pour l'exploration de M
 |---|---|
 | 🌐 **Démo en ligne** | https://ares-sentinel.onrender.com *(à remplacer par ton adresse Render une fois déployé)* |
 | 🎥 **Vidéo** | https://www.youtube.com/watch?v=ID_DE_TA_VIDEO *(à remplacer par le lien de ta vidéo)* |
-| 💻 **Code source** | https://github.com/TON-PSEUDO/ares-sentinel *(à remplacer)* |
+| 💻 **Code source** | https://github.com/sefimiakanda/ares-sentinel *(à remplacer)* |
 
 ### Captures d'écran
 
