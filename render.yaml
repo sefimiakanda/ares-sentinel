@@ -13,8 +13,12 @@ services:
     plan: free                      # free plan: the service sleeps after a while without visits
     branch: main                    # every push on this branch redeploys the site
     # No rootDir on purpose: the code reads ../data and ../frontend, which live outside backend/.
-    buildCommand: cd backend && uv sync --frozen --no-dev
-    startCommand: cd backend && uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    #
+    # Render only pre-installs uv when uv.lock sits at the repo ROOT (ours is in backend/), so we install uv
+    # ourselves with pip, and call it as "python -m uv" so it works even if the "uv" command is not on the PATH.
+    buildCommand: pip install uv && cd backend && python -m uv sync --frozen --no-dev
+    # The environment was created in backend/.venv during the build: we start uvicorn straight from there.
+    startCommand: cd backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/sante     # Render checks that the server answers here
     envVars:
       - key: PYTHON_VERSION         # pyproject.toml asks for Python >= 3.12
