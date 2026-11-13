@@ -135,13 +135,17 @@ def fournisseur():
 
 
 def etat() -> dict:
-    """État global de l'assistant (affiché dans l'interface)."""
+    """État global de l'assistant (affiché dans l'interface, avec un diagnostic si rien n'est prêt)."""
     if fournisseur() == "gemini":
         return {"pret": True, "fournisseur": "gemini", "modele": _modele_gemini(), "raison": ""}
     e = etat_ollama()
     e["fournisseur"] = "ollama" if e["pret"] else None
-    if not e["pret"] and os.environ.get("LLM_PROVIDER", "").lower() == "gemini":
-        e["raison"] = "Aucune clé GEMINI_API_KEY trouvée (fichier backend/.env ou variable d'environnement)."
+    if not e["pret"] and os.environ.get("LLM_PROVIDER", "").strip().lower() != "ollama":
+        gemini = "aucune clé GEMINI_API_KEY détectée " + (
+            "(un fichier .env existe, mais sans cette ligne)" if config.FICHIER_ENV_TROUVE
+            else "(aucun fichier backend/.env trouvé)"
+        )
+        e["raison"] = f"Gemini : {gemini}. Ollama : {e['raison']}"
     return e
 
 
