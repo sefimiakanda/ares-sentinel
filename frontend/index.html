@@ -1,105 +1,15 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ares Sentinel – Sortie sur Mars : est-ce sûr ?</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/style.css" />
-</head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ares Sentinel · Intelligence martienne</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><link rel="stylesheet" href="/static/style.css"></head>
 <body>
-  <header class="hero">
-    <!-- Le style en ligne garantit que ce canvas ne pousse jamais le contenu, même si le CSS tarde à charger -->
-    <canvas id="plexus" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
-    <div class="hero-contenu">
-      <p class="surtitre">NASA DATA + IA</p>
-      <h1>Ares Sentinel</h1>
-      <p class="accroche">La carte intelligente qui aide les premiers astronautes à décider si une sortie sur Mars est sûre.</p>
-      <div id="chip" class="chip gris">Chargement…</div>
-    </div>
-  </header>
-
-  <nav class="onglets" id="onglets">
-    <button data-vue="tableau" class="actif">Tableau de bord</button>
-    <button data-vue="historique">Historique</button>
-    <button data-vue="anomalies">Anomalies</button>
-    <button data-vue="assistant">Assistant</button>
-  </nav>
-
+  <header class="hero"><canvas id="plexus" aria-hidden="true"></canvas><div class="brand"><span class="eyebrow">NASA DATA · GEMINI AI</span><h1>Ares Sentinel</h1><p>Intelligence opérationnelle pour explorer les données météo de Mars.</p></div><div id="chip" class="chip gris">Connexion à Gemini…</div></header>
+  <nav id="onglets" class="tabs"><button class="actif" data-vue="tableau">Vue mission</button><button data-vue="historique">Explorateur</button><button data-vue="anomalies">Anomalies ML</button><button data-vue="assistant">Gemini</button></nav>
   <main>
-    <section class="vue actif" id="vue-tableau">
-      <div class="grille-2">
-        <div class="panneau">
-          <h2>Carte de Mars</h2>
-          <div id="carte-mars" class="carte-mars" hidden></div>
-          <canvas id="carte" width="900" height="560"></canvas>
-          <p id="carte-info" class="petit">Fond schématique (la carte NASA n'a pas pu se charger). Gale est le seul site avec de vraies mesures.</p>
-        </div>
-
-        <div class="panneau" id="verdict-panneau">
-          <h2>Verdict de sortie</h2>
-          <div class="selecteur">
-            <label for="slider">Jour martien</label>
-            <input type="range" id="slider" min="0" max="0" value="0" />
-            <strong id="sol-affiche">–</strong>
-          </div>
-          <button id="btn-dernier" class="secondaire">Revenir au dernier sol</button>
-          <div id="verdict" class="verdict gris">Chargement…</div>
-          <div id="date-saison" class="dates"></div>
-          <details class="aide">
-            <summary>Comprendre ces dates</summary>
-            <p><b>Qu'est-ce qu'un sol ?</b> Un sol est un jour martien : 24 h 39 min. Le sol 0 est le jour de l'arrivée du rover Curiosity (6 août 2012).</p>
-            <p><b>Pourquoi pas la date d'aujourd'hui ?</b> Ares Sentinel ne reçoit pas de mesures en direct. Il lit une copie des données de la NASA enregistrée dans le projet : elle s'arrête à sa dernière mesure. « Aujourd'hui » veut donc dire « le dernier jour de cette copie ». Pour des jours plus récents, il faut mettre à jour le fichier de données.</p>
-            <p><b>Les saisons.</b> Mars a des saisons comme la Terre, mais son année dure 687 jours terrestres, et les saisons sont inversées entre les deux hémisphères (hiver au nord = été au sud). <b>Ls</b> indique la position de Mars sur son orbite, de 0° à 360° : 0° début du printemps au nord, 90° été, 180° automne, 270° hiver.</p>
-          </details>
-          <div id="mesures" class="mesures"></div>
-        </div>
-      </div>
-
-      <div class="panneau">
-        <h2>Pourquoi ce verdict ?</h2>
-        <div id="facteurs"></div>
-        <p id="alerte-anomalie" class="alerte" hidden></p>
-        <p class="petit" id="avertissement"></p>
-      </div>
-    </section>
-
-    <section class="vue" id="vue-historique">
-      <div class="panneau">
-        <h2>Indice de risque depuis 2012</h2>
-        <canvas id="graphique" width="1100" height="320"></canvas>
-        <p id="lecture-graphique" class="lecture"></p>
-        <p class="petit">Les points jaunes sont les anomalies détectées par machine learning. Clique sur le graphique pour choisir un sol.</p>
-      </div>
-    </section>
-
-    <section class="vue" id="vue-anomalies">
-      <div class="panneau">
-        <h2>Anomalies détectées</h2>
-        <p class="petit" id="total-anomalies"></p>
-        <ul id="liste-anomalies" class="liste"></ul>
-      </div>
-    </section>
-
-    <section class="vue" id="vue-assistant">
-      <div class="panneau assistant">
-        <h2>Assistant scientifique</h2>
-        <div id="exemples" class="exemples"></div>
-        <div id="discussion" class="discussion"></div>
-        <div class="saisie">
-          <input type="text" id="question" placeholder="Pose ta question sur Mars…" />
-          <button id="btn-envoyer">Envoyer</button>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer>
-    Données : NASA Mars Weather Service / Curiosity REMS (cratère Gale). L'indice est pédagogique : ce n'est pas un seuil de sécurité officiel de la NASA.
-  </footer>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/plexus.js"></script>
-  <script src="/static/app.js"></script>
-</body>
-</html>
+    <section id="vue-tableau" class="vue actif"><div class="section-head"><div><span class="eyebrow">CENTRE DE CONTRÔLE</span><h2>Inspecter un sol</h2></div><p>Chaque carte est ancrée dans les observations Curiosity du cratère Gale.</p></div>
+      <div class="selector panel"><div><label for="sol-input">Sol martien</label><div class="field-row"><input id="sol-input" type="number" inputmode="numeric"><button id="btn-sol">Afficher</button></div></div><span class="or">ou</span><div><label for="date-input">Date terrestre</label><div class="field-row"><input id="date-input" type="date"><button id="btn-date">Chercher</button></div></div><button id="btn-dernier" class="quiet">Dernière mesure</button></div>
+      <div class="dashboard-grid"><article class="panel verdict-panel"><div class="panel-title"><span>ÉTAT DE MISSION</span><strong id="sol-affiche">—</strong></div><div id="verdict" class="verdict gris">Chargement…</div><div id="date-saison" class="dates"></div><div id="mesures" class="metrics"></div><p id="avertissement" class="fine"></p></article><article class="panel profile-panel"><div class="panel-title"><span>PROFIL DU SOL</span><strong>Comparé à l’historique</strong></div><canvas id="profil" width="520" height="280"></canvas><p id="profil-lecture" class="fine"></p></article><article class="panel map-panel"><div class="panel-title"><span>POSITION</span><strong>Planète Mars</strong></div><div id="carte-mars" class="carte-mars"></div><p id="carte-info" class="fine">Gale est le seul site pour lequel ce jeu contient des mesures réelles.</p></article><article class="panel factors-panel"><div class="panel-title"><span>EXPLICATION DU VERDICT</span><strong>Indice pondéré</strong></div><div id="facteurs"></div><p id="alerte-anomalie" class="alert" hidden></p></article></div></section>
+    <section id="vue-historique" class="vue"><div class="section-head"><div><span class="eyebrow">VISUALISATION AVANCÉE</span><h2>Historique des risques</h2></div><p>Cliquez la courbe pour ouvrir n’importe quel sol.</p></div><article class="panel chart-panel"><canvas id="graphique" width="1200" height="380"></canvas><div id="lecture-graphique" class="reading"></div></article></section>
+    <section id="vue-anomalies" class="vue"><div class="section-head"><div><span class="eyebrow">MACHINE LEARNING</span><h2>Jours atypiques</h2></div><p id="total-anomalies"></p></div><article class="panel"><ul id="liste-anomalies" class="anomaly-list"></ul></article></section>
+    <section id="vue-assistant" class="vue"><div class="assistant-layout"><div class="assistant-intro panel"><span class="eyebrow">GOOGLE GEMINI</span><h2>Questionner les données</h2><p>Gemini consulte les outils Ares Sentinel avant de répondre. Il n’y a aucun assistant local de secours.</p><div id="exemples" class="examples"></div></div><div class="panel conversation-panel"><div id="discussion" class="discussion"></div><div class="saisie"><input id="question" type="text" placeholder="Ex. Pourquoi ce sol est-il inhabituel ?"><button id="btn-envoyer">Envoyer</button></div></div></div></section>
+  </main><footer>Données : NASA Mars Weather Service / Curiosity REMS · Indice pédagogique, non utilisable comme seuil de sécurité NASA.</footer><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="/static/plexus.js"></script><script src="/static/app.js"></script>
+</body></html>

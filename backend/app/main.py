@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assistant, config, pipeline  # config charge le fichier backend/.env
+from . import assistant, config, llm, pipeline  # config charge le fichier backend/.env
 from .sites import SITES
 
 app = FastAPI(title="Ares Sentinel", version="1.0.0")
@@ -100,7 +100,15 @@ def serie():
     return {
         "seuils": pipeline.seuils(),
         "points": [
-            {"sol": int(r.sol), "indice": None if r.indice != r.indice else r.indice, "anomalie": bool(r.est_anomalie)}
+            {
+                "sol": int(r.sol),
+                "date": r.terrestrial_date,
+                "indice": None if r.indice != r.indice else r.indice,
+                "anomalie": bool(r.est_anomalie),
+                "temp_min": None if r.air_temp_min_c != r.air_temp_min_c else r.air_temp_min_c,
+                "temp_max": None if r.air_temp_max_c != r.air_temp_max_c else r.air_temp_max_c,
+                "pression": None if r.pressure_pa != r.pressure_pa else r.pressure_pa,
+            }
             for r in df.itertuples()
         ],
     }
@@ -128,7 +136,13 @@ def anomalies(limite: int = 20):
 
 @app.post("/api/assistant")
 def poser_question(q: Question):
-    return assistant.repondre(q.question, q.sol)
+    try:
+        return assistant.repondre(q.question, q.sol)
+    except llm.LLMConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except (llm.LLMSansOutil, RuntimeError) as exc:
+        # Aucune réponse à règles ne masque une panne ou une réponse non vérifiable de Gemini.
+        raise HTTPException(status_code=502, detail=f"Gemini n'a pas pu produire une réponse vérifiable : {exc}") from None
 
 
 @app.get("/api/exemples")
