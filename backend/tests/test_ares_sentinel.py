@@ -7,6 +7,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+os.environ["LLM_PROVIDER"] = "ollama"      # tests déterministes, même si tu as un .env avec une clé
+os.environ.pop("GEMINI_API_KEY", None)
+
 from app import assistant, llm, outils, pipeline
 from app.indice import construire_reference, calculer_indice, rang, verdict
 
@@ -201,6 +204,93 @@ def test_secours_si_ollama_est_eteint():
     r = assistant.repondre("anomalies ?")
     assert "règles" in r["type"] and r["preuves"]
     assert assistant.etat_llm()["assistant"] == "regles"
+
+
+# ---------- Tests Gemini : faux serveur au format de l'API Gemini ----------
+
+class FauxGemini(BaseHTTPRequestHandler):
+    requetes = []
+    en_tetes = []
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        FauxGemini.requetes.append((self.path, payload))
+        FauxGemini.en_tetes.append(self.headers.get("x-goog-api-key"))
+        a_repondu = any("functionResponse" in p for m in payload["contents"] for p in m["parts"])
+        if not a_repondu:
+            parties = [{"functionCall": {"name": "obtenir_sortie", "args": {"sol": 4780.0, "inconnu": "x"}}}]
+        else:
+            parties = [{"text": TEXTE_OK}]
+        corps = json.dumps({"candidates": [{"content": {"role": "model", "parts": parties}}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(corps)
+
+
+def regler_gemini():
+    FauxGemini.requetes, FauxGemini.en_tetes = [], []
+    serveur = HTTPServer(("127.0.0.1", 0), FauxGemini)
+    threading.Thread(target=serveur.serve_forever, daemon=True).start()
+    os.environ.update(GEMINI_API_KEY="cle-de-test", GEMINI_API_BASE=f"http://127.0.0.1:{serveur.server_port}/v1beta",
+                      LLM_PROVIDER="")
+    return serveur
+
+
+def nettoyer_gemini():
+    for k in ("GEMINI_API_KEY", "GEMINI_API_BASE"):
+        os.environ.pop(k, None)
+    os.environ["LLM_PROVIDER"] = "ollama"
+
+
+def test_gemini_boucle_outils_et_securite_de_la_cle():
+    serveur = regler_gemini()
+    try:
+        assert llm.fournisseur() == "gemini" and assistant.etat_llm()["assistant"] == "gemini"
+        r = assistant.repondre("Pourquoi le sol 4780 est-il rouge ?")
+    finally:
+        serveur.shutdown()
+        nettoyer_gemini()
+    assert "Gemini" in r["type"] and r["sol_cite"] == 4780 and r["outils_utilises"] == ["obtenir_sortie"]
+    assert r["preuves"] == ["Indice 98.2/100", "Froid : -98 °C"] and r["chiffres_non_verifies"] == []
+    (chemin, premier), (_, second) = FauxGemini.requetes
+    assert chemin == "/v1beta/models/gemini-2.5-flash:generateContent"
+    assert FauxGemini.en_tetes == ["cle-de-test", "cle-de-test"]            # la clé voyage dans l'en-tête
+    assert "cle-de-test" not in json.dumps(r) and "cle-de-test" not in json.dumps(premier)  # jamais dans les données
+    assert "AUCUN chiffre" in premier["systemInstruction"]["parts"][0]["text"]
+    decl = premier["tools"][0]["functionDeclarations"]
+    assert len(decl) == 4 and "parameters" not in decl[2]                    # outil sans argument : pas de parameters
+    retour = second["contents"][-1]["parts"][0]["functionResponse"]
+    assert retour["name"] == "obtenir_sortie" and retour["response"]["result"]["indice"] == 98.2
+
+
+def test_gemini_en_panne_bascule_sur_les_regles():
+    os.environ.update(GEMINI_API_KEY="cle-de-test", GEMINI_API_BASE="http://127.0.0.1:1/v1beta", LLM_PROVIDER="")
+    try:
+        r = assistant.repondre("anomalies ?")
+    finally:
+        nettoyer_gemini()
+    assert "secours" in r["type"] and r["preuves"]
+
+
+def test_le_fichier_env_est_charge_sans_ecraser_le_systeme(tmp_path=None):
+    import tempfile
+    from pathlib import Path
+    from app import config
+    dossier = Path(tempfile.mkdtemp())
+    (dossier / ".env").write_text('# commentaire\nCLE_TEST_A=valeur1\nCLE_TEST_B="valeur2"\n', encoding="utf-8")
+    os.environ["CLE_TEST_B"] = "deja-defini"
+    ancien = config._ICI
+    config._ICI = dossier / "backend"
+    (dossier / "backend").mkdir()
+    try:
+        config.charger_env()
+    finally:
+        config._ICI = ancien
+    assert os.environ["CLE_TEST_A"] == "valeur1" and os.environ["CLE_TEST_B"] == "deja-defini"
 
 
 def test_api():
