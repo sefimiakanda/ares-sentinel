@@ -153,9 +153,14 @@ def repondre_gemini(question: str, sol_choisi=None, appeler=None) -> dict:
     contexte = f"\n\n(Contexte : l'utilisateur regarde le sol {int(sol_choisi)}.)" if sol_choisi else ""
     messages = [{"role": "user", "parts": [{"text": question + contexte}]}]
     sol_cite, outils_utilises, resultats = None, [], []
-    for _ in range(MAX_TOURS):
-        data = appeler({"systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]}, "contents": messages,
-                        "tools": _declarations_gemini(), "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048}})
+    for tour in range(MAX_TOURS):
+        requete = {"systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]}, "contents": messages,
+                   "tools": _declarations_gemini(), "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048}}
+        # Gemini doit obligatoirement interroger les données au premier tour. Aux tours
+        # suivants, il peut rédiger la réponse après avoir reçu le résultat de l'outil.
+        if tour == 0:
+            requete["toolConfig"] = {"functionCallingConfig": {"mode": "ANY"}}
+        data = appeler(requete)
         try:
             contenu = data["candidates"][0]["content"]
         except (KeyError, IndexError):
