@@ -8,14 +8,13 @@ from openai import APIConnectionError, APIError, APIStatusError, OpenAI, RateLim
 
 from . import config  # noqa: F401
 
-MAX_TOURS = 2
 MAX_QUESTION = 500
 SYSTEM_PROMPT = """Tu es l'assistant scientifique d'Ares Sentinel.
 Réponds en français, de façon claire et brève (120 mots maximum).
 
 RÈGLES STRICTES
-1. Tu ne connais aucun chiffre sur Mars : appelle toujours un outil avant de répondre.
-2. Ne cite que les valeurs renvoyées par les outils, avec le sol et la date lorsqu'ils existent.
+1. Les résultats JSON des outils locaux fournis ci-dessous sont ta seule source factuelle.
+2. Ne cite que les valeurs de ces résultats, avec le sol et la date lorsqu'ils existent.
 3. Si une information n'est pas dans les outils, dis-le. N'invente ni chiffre ni mesure.
 4. L'indice est pédagogique, relatif à l'historique Curiosity ; ce n'est pas un seuil de sécurité NASA.
 5. « Aujourd'hui » désigne le dernier sol présent dans ce jeu de données, pas une mesure en direct.
@@ -66,31 +65,29 @@ def _client() -> OpenAI:
     return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=_cle(), timeout=60.0, max_retries=1)
 
 
-def _outils_openai() -> list:
+def _donnees_locales(question: str, sol_choisi=None) -> tuple[str, list[str], list[str]]:
     from . import outils
-    return [{"type": "function", "function": {"name": d["name"], "description": d["description"], "parameters": d["input_schema"]}}
-            for d in outils.DEFINITIONS]
-
-
-def _executer_outil(nom, arguments):
-    from . import outils
-    fonction = outils.FONCTIONS.get(nom)
-    if fonction is None:
-        return json.dumps({"erreur": f"Outil inconnu : {nom}"}), True
-    definition = next(d for d in outils.DEFINITIONS if d["name"] == nom)
-    try:
-        arguments = json.loads(arguments or "{}") if isinstance(arguments, str) else (arguments or {})
-    except json.JSONDecodeError:
-        return json.dumps({"erreur": "Arguments d'outil JSON invalides."}), True
-    if not isinstance(arguments, dict):
-        return json.dumps({"erreur": "Les arguments d'outil doivent être un objet."}), True
-    autorises = definition["input_schema"]["properties"].keys()
-    arguments = {k: v for k, v in arguments.items() if k in autorises and v not in (None, "")}
-    try:
-        resultat = fonction(**arguments)
-        return json.dumps(resultat, ensure_ascii=False, default=str), "erreur" in resultat
-    except Exception as exc:
-        return json.dumps({"erreur": f"Échec de l'outil : {exc}"}), True
+    sols = []
+    if sol_choisi is not None:
+        sols.append(int(sol_choisi))
+    for valeur in re.findall(r"(?i)\bsol\s*(?:n[°o]\s*)?(\d+)\b", question):
+        sol = int(valeur)
+        if sol not in sols:
+            sols.append(sol)
+    if not sols:
+        sols.append(None)
+    sorties = [outils.obtenir_sortie(sol) for sol in sols[:5]]
+    donnees = {
+        "sorties": sorties,
+        "statistiques_globales": outils.statistiques_globales(),
+        "anomalies_principales": outils.lister_anomalies(5),
+        "comparaison_saisons": outils.comparer_saisons(),
+    }
+    noms = ["obtenir_sortie"] * len(sorties) + [
+        "statistiques_globales", "lister_anomalies", "comparer_saisons",
+    ]
+    resultats = [json.dumps(valeur, ensure_ascii=False, default=str) for valeur in donnees.values()]
+    return json.dumps(donnees, ensure_ascii=False, default=str), resultats, noms
 
 
 def decouper_reponse(texte: str) -> dict:
@@ -128,40 +125,26 @@ def _finaliser(texte, resultats, question, sol, outils_utilises, modele):
 def repondre_openrouter(question: str, sol_choisi=None, client=None) -> dict:
     question = question.strip()[:MAX_QUESTION]
     contexte = f"\n\n(Contexte : l'utilisateur regarde le sol {int(sol_choisi)}.)" if sol_choisi else ""
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question + contexte}]
+    donnees, resultats, utilises = _donnees_locales(question, sol_choisi)
+    messages = [
+        {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nRÉSULTATS DES OUTILS LOCAUX (JSON):\n{donnees}"},
+        {"role": "user", "content": question + contexte},
+    ]
     client = client or _client()
-    sol_cite, utilises, resultats = None, [], []
     modele = _modele()
     try:
-        for tour in range(MAX_TOURS):
-            reponse = client.chat.completions.create(model=modele, messages=messages, tools=_outils_openai(),
-                                                      tool_choice="required" if tour == 0 else "none", temperature=0.2, max_tokens=1024)
-            if not reponse.choices:
-                raise RuntimeError("OpenRouter a renvoyé une réponse vide.")
-            if tour == 0:
-                modele = getattr(reponse, "model", None)
-                if not modele:
-                    raise RuntimeError("OpenRouter n'a pas indiqué le modèle sélectionné.")
-            message = reponse.choices[0].message
-            if message is None:
-                raise RuntimeError("OpenRouter a renvoyé un message vide.")
-            appels = message.tool_calls or []
-            if not appels:
-                if not utilises:
-                    raise LLMSansOutil("OpenRouter a répondu sans consulter les données")
-                if not (message.content or "").strip():
-                    raise RuntimeError("OpenRouter n'a pas fourni de réponse après les outils.")
-                return _finaliser(message.content or "", resultats, question + contexte, sol_cite, utilises, modele)
-            if tour > 0:
-                raise RuntimeError("OpenRouter a tenté un nouvel appel d'outil après avoir reçu les données.")
-            messages.append(message.model_dump(exclude_none=True))
-            for appel in appels:
-                nom = appel.function.name
-                texte, erreur = _executer_outil(nom, appel.function.arguments)
-                utilises.append(nom); resultats.append(texte)
-                if nom == "obtenir_sortie" and not erreur:
-                    sol_cite = json.loads(texte).get("sol")
-                messages.append({"role": "tool", "tool_call_id": appel.id, "content": texte})
+        reponse = client.chat.completions.create(
+            model=modele, messages=messages, temperature=0.2, max_tokens=512,
+        )
+        if not reponse.choices or reponse.choices[0].message is None:
+            raise RuntimeError("OpenRouter a renvoyé une réponse vide.")
+        texte = reponse.choices[0].message.content
+        if not texte or not texte.strip():
+            raise RuntimeError("OpenRouter n'a pas fourni de réponse.")
+        modele = getattr(reponse, "model", None) or modele
+        sorties = json.loads(donnees)["sorties"]
+        sol_cite = next((sortie.get("sol") for sortie in sorties if sortie.get("sol") is not None), None)
+        return _finaliser(texte, resultats, question + contexte, sol_cite, utilises, modele)
     except RateLimitError as exc:
         raise RuntimeError("OpenRouter a atteint sa limite de requêtes ; réessaie dans un instant.") from exc
     except APIConnectionError as exc:

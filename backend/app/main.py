@@ -118,9 +118,22 @@ def serie():
 @app.get("/api/anomalies")
 def anomalies(limite: int = 20):
     df = pipeline.tableau()
-    top = df[df["est_anomalie"]].sort_values("anomalie_intensite", ascending=False).head(max(1, min(limite, 100)))
+    analyses = df.dropna(subset=["anomalie_intensite"])
+    detectees = analyses[analyses["est_anomalie"]].sort_values("anomalie_intensite", ascending=False)
+    top = detectees.head(max(1, min(limite, 100)))
+    pire = detectees.iloc[0] if not detectees.empty else None
     return {
-        "total": int(df["est_anomalie"].sum()),
+        "total": int(len(detectees)),
+        "statistiques": {
+            "jours_analyses": int(len(analyses)),
+            "taux_pct": round(len(detectees) / len(analyses) * 100, 1) if len(analyses) else 0,
+            "intensite_moyenne": round(float(detectees["anomalie_intensite"].mean()), 1) if not detectees.empty else None,
+            "sol_le_plus_atypique": {
+                "sol": int(pire["sol"]),
+                "date": pire["terrestrial_date"],
+                "intensite": float(pire["anomalie_intensite"]),
+            } if pire is not None else None,
+        },
         "anomalies": [
             {
                 "sol": int(r.sol),

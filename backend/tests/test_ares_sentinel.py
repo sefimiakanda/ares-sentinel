@@ -31,6 +31,22 @@ def test_nasa_space_apps_image_is_served():
     assert response.headers["content-type"] == "image/png"
 
 
+def test_anomalies_endpoint_includes_explanatory_statistics():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    response = TestClient(app).get("/api/anomalies")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] > 0
+    assert data["statistiques"]["jours_analyses"] > data["total"]
+    assert 0 < data["statistiques"]["taux_pct"] < 100
+    assert data["statistiques"]["sol_le_plus_atypique"]["intensite"] >= data["statistiques"]["intensite_moyenne"]
+    assert data["anomalies"][0]["raison"]
+
+
 def test_openrouter_requires_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     assert llm.fournisseur() is None
@@ -52,85 +68,36 @@ def test_response_parser_and_number_guard():
     assert llm.chiffres_non_verifies("Indice 77.7", ['{"indice": 98.2}'], "") == ["77.7"]
 
 
-def test_openrouter_requires_tool_before_answer(monkeypatch):
+def test_openrouter_preloads_local_data_in_one_request(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    call = SimpleNamespace(
-        id="call-1",
-        function=SimpleNamespace(name="obtenir_sortie", arguments='{"sol": 42}'),
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    monkeypatch.setattr(outils, "obtenir_sortie", lambda sol=None: {"sol": sol or 42, "indice": 20})
+    monkeypatch.setattr(outils, "statistiques_globales", lambda: {"sols": 10})
+    monkeypatch.setattr(outils, "lister_anomalies", lambda limite=5: {"total_anomalies": 2})
+    monkeypatch.setattr(outils, "comparer_saisons", lambda: {"saison_poussiere": {"nb_sols": 5}})
+    response = SimpleNamespace(
+        model="provider/model:free",
+        choices=[SimpleNamespace(message=SimpleNamespace(content="CONSTAT: Données disponibles.\nPREUVES:\n- Sol 42, indice 20/100\nLIMITES: Comparaison historique."))],
     )
-    tool_message = SimpleNamespace(
-        content=None,
-        tool_calls=[call],
-        model_dump=lambda **_: {
-            "role": "assistant",
-            "tool_calls": [{"id": "call-1", "type": "function"}],
-        },
-    )
-    final_message = SimpleNamespace(
-        content="CONSTAT: Données disponibles.\nPREUVES:\n- Sol 42, indice 20/100\nLIMITES: Comparaison historique.",
-        tool_calls=None,
-    )
-    responses = [
-        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=tool_message)]),
-        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=final_message)]),
-    ]
     requests = []
 
     class Completions:
         def create(self, **kwargs):
             requests.append(kwargs)
-            return responses.pop(0)
+            return response
 
     client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()))
-    monkeypatch.setattr(llm, "_executer_outil", lambda *_: ('{"sol": 42, "indice": 20}', False))
 
-    result = llm.repondre_openrouter("Quel est le risque ?", sol_choisi=42, client=client)
+    result = llm.repondre_openrouter("Compare le sol 42 au sol 43.", sol_choisi=42, client=client)
 
-    assert requests[0]["tool_choice"] == "required"
-    assert requests[1]["tool_choice"] == "none"
-    assert requests[1]["model"] == "provider/model:free"
-    assert requests[1]["messages"][-1]["role"] == "tool"
-    assert len(requests) == 2
-    assert result["outils_utilises"] == ["obtenir_sortie"]
+    assert len(requests) == 1
+    assert requests[0]["model"] == "openrouter/free"
+    assert requests[0]["max_tokens"] == 512
+    assert "tools" not in requests[0]
+    assert '"sol": 43' in requests[0]["messages"][0]["content"]
+    assert result["outils_utilises"] == ["obtenir_sortie", "obtenir_sortie", "statistiques_globales", "lister_anomalies", "comparer_saisons"]
     assert result["sol_cite"] == 42
     assert "provider/model:free" in result["type"]
-
-
-def test_openrouter_rejects_another_tool_round(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    call = SimpleNamespace(
-        id="call-1",
-        function=SimpleNamespace(name="obtenir_sortie", arguments="{}"),
-    )
-    tool_message = SimpleNamespace(
-        content=None,
-        tool_calls=[call],
-        model_dump=lambda **_: {"role": "assistant", "tool_calls": []},
-    )
-    responses = [
-        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=tool_message)]),
-        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=tool_message)]),
-    ]
-    calls = []
-
-    class Completions:
-        def create(self, **_):
-            return responses.pop(0)
-
-    monkeypatch.setattr(llm, "_executer_outil", lambda *_: (calls.append("tool") or "{}", False))
-    client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()))
-
-    with pytest.raises(RuntimeError, match="nouvel appel d'outil"):
-        llm.repondre_openrouter("Question", client=client)
-
-    assert calls == ["tool"]
-
-
-def test_tool_rejects_malformed_arguments():
-    result, failed = llm._executer_outil("obtenir_sortie", "{")
-
-    assert failed
-    assert json.loads(result)["erreur"] == "Arguments d'outil JSON invalides."
 
 
 def test_openrouter_rejects_empty_response(monkeypatch):
