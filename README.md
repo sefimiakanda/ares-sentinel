@@ -9,11 +9,8 @@ Explore Curiosity REMS data from Gale Crater through a sol/date selector, Mars m
 
 ![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white) ![Uvicorn](https://img.shields.io/badge/Uvicorn-ASGI_server-499848) ![Pydantic](https://img.shields.io/badge/Pydantic-validation-E92063?logo=pydantic&logoColor=white) ![uv](https://img.shields.io/badge/uv-environment-6f42c1?logo=uv&logoColor=white)
 ![pandas](https://img.shields.io/badge/pandas-data-150458?logo=pandas&logoColor=white) ![NumPy](https://img.shields.io/badge/NumPy-numerical-013243?logo=numpy&logoColor=white) ![scikit-learn](https://img.shields.io/badge/scikit--learn-ML-F7931E?logo=scikitlearn&logoColor=white) ![Isolation Forest](https://img.shields.io/badge/Isolation_Forest-anomaly_detection-orange) ![Google Gemini](https://img.shields.io/badge/Google_Gemini-LLM-8E75B2?logo=googlegemini&logoColor=white) ![Tool calling](https://img.shields.io/badge/LLM-tool_calling-blueviolet)
-
 ![JavaScript](https://img.shields.io/badge/JavaScript-frontend-F7DF1E?logo=javascript&logoColor=black) ![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white) ![CSS3](https://img.shields.io/badge/CSS3-1572B6?logo=css3&logoColor=white) ![Leaflet](https://img.shields.io/badge/Leaflet-interactive_map-199900?logo=leaflet&logoColor=white) ![Canvas](https://img.shields.io/badge/HTML_Canvas-charts_%26_Plexus-E34F26) ![Mermaid](https://img.shields.io/badge/Mermaid-diagrams-FF3670?logo=mermaid&logoColor=white)
-
 ![NASA Curiosity REMS](https://img.shields.io/badge/NASA-Curiosity_REMS_data-0B3D91?logo=nasa&logoColor=white) ![NASA Mars Trek](https://img.shields.io/badge/NASA-Mars_Trek_imagery-0B3D91) ![USGS](https://img.shields.io/badge/USGS-Viking_MDIM_2.1-2E7D32)
-
 ![pytest](https://img.shields.io/badge/pytest-tests-0A9EDC?logo=pytest&logoColor=white) ![Git](https://img.shields.io/badge/Git-F05032?logo=git&logoColor=white) ![GitHub](https://img.shields.io/badge/GitHub-repository-181717?logo=github&logoColor=white) ![Render](https://img.shields.io/badge/Render-deployment-46E3B7?logo=render&logoColor=black) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Status](https://img.shields.io/badge/Status-educational-informational)
 
 
