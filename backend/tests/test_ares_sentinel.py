@@ -60,8 +60,8 @@ def test_openrouter_requires_tool_before_answer(monkeypatch):
         tool_calls=None,
     )
     responses = [
-        SimpleNamespace(choices=[SimpleNamespace(message=tool_message)]),
-        SimpleNamespace(choices=[SimpleNamespace(message=final_message)]),
+        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=tool_message)]),
+        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=final_message)]),
     ]
     requests = []
 
@@ -76,10 +76,43 @@ def test_openrouter_requires_tool_before_answer(monkeypatch):
     result = llm.repondre_openrouter("Quel est le risque ?", sol_choisi=42, client=client)
 
     assert requests[0]["tool_choice"] == "required"
-    assert requests[1]["tool_choice"] == "auto"
+    assert requests[1]["tool_choice"] == "none"
+    assert requests[1]["model"] == "provider/model:free"
     assert requests[1]["messages"][-1]["role"] == "tool"
+    assert len(requests) == 2
     assert result["outils_utilises"] == ["obtenir_sortie"]
     assert result["sol_cite"] == 42
+    assert "provider/model:free" in result["type"]
+
+
+def test_openrouter_rejects_another_tool_round(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(name="obtenir_sortie", arguments="{}"),
+    )
+    tool_message = SimpleNamespace(
+        content=None,
+        tool_calls=[call],
+        model_dump=lambda **_: {"role": "assistant", "tool_calls": []},
+    )
+    responses = [
+        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=tool_message)]),
+        SimpleNamespace(model="provider/model:free", choices=[SimpleNamespace(message=tool_message)]),
+    ]
+    calls = []
+
+    class Completions:
+        def create(self, **_):
+            return responses.pop(0)
+
+    monkeypatch.setattr(llm, "_executer_outil", lambda *_: (calls.append("tool") or "{}", False))
+    client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()))
+
+    with pytest.raises(RuntimeError, match="nouvel appel d'outil"):
+        llm.repondre_openrouter("Question", client=client)
+
+    assert calls == ["tool"]
 
 
 def test_tool_rejects_malformed_arguments():

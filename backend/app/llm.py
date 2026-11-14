@@ -8,7 +8,7 @@ from openai import APIConnectionError, APIError, APIStatusError, OpenAI, RateLim
 
 from . import config  # noqa: F401
 
-MAX_TOURS = 4
+MAX_TOURS = 2
 MAX_QUESTION = 500
 SYSTEM_PROMPT = """Tu es l'assistant scientifique d'Ares Sentinel.
 Réponds en français, de façon claire et brève (120 mots maximum).
@@ -116,12 +116,12 @@ def chiffres_non_verifies(texte_reponse: str, resultats_outils: list, question: 
     return suspects
 
 
-def _finaliser(texte, resultats, question, sol, outils_utilises):
+def _finaliser(texte, resultats, question, sol, outils_utilises, modele):
     from .assistant import LIMITE_GENERALE
     parties = decouper_reponse(texte)
     return {"constat": parties["constat"], "preuves": parties["preuves"], "limites": parties["limites"] or LIMITE_GENERALE,
             "source": "NASA Mars Weather Service / Curiosity REMS (cache local)", "sol_cite": sol,
-            "type": f"OpenRouter ({_modele()}) + outils sur données réelles", "outils_utilises": outils_utilises,
+            "type": f"OpenRouter ({modele}) + outils sur données réelles", "outils_utilises": outils_utilises,
             "chiffres_non_verifies": chiffres_non_verifies(parties["constat"] + "\n" + "\n".join(parties["preuves"]), resultats, question)}
 
 
@@ -131,12 +131,17 @@ def repondre_openrouter(question: str, sol_choisi=None, client=None) -> dict:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question + contexte}]
     client = client or _client()
     sol_cite, utilises, resultats = None, [], []
+    modele = _modele()
     try:
         for tour in range(MAX_TOURS):
-            reponse = client.chat.completions.create(model=_modele(), messages=messages, tools=_outils_openai(),
-                                                      tool_choice="required" if tour == 0 else "auto", temperature=0.2, max_tokens=1024)
+            reponse = client.chat.completions.create(model=modele, messages=messages, tools=_outils_openai(),
+                                                      tool_choice="required" if tour == 0 else "none", temperature=0.2, max_tokens=1024)
             if not reponse.choices:
                 raise RuntimeError("OpenRouter a renvoyé une réponse vide.")
+            if tour == 0:
+                modele = getattr(reponse, "model", None)
+                if not modele:
+                    raise RuntimeError("OpenRouter n'a pas indiqué le modèle sélectionné.")
             message = reponse.choices[0].message
             if message is None:
                 raise RuntimeError("OpenRouter a renvoyé un message vide.")
@@ -146,7 +151,9 @@ def repondre_openrouter(question: str, sol_choisi=None, client=None) -> dict:
                     raise LLMSansOutil("OpenRouter a répondu sans consulter les données")
                 if not (message.content or "").strip():
                     raise RuntimeError("OpenRouter n'a pas fourni de réponse après les outils.")
-                return _finaliser(message.content or "", resultats, question + contexte, sol_cite, utilises)
+                return _finaliser(message.content or "", resultats, question + contexte, sol_cite, utilises, modele)
+            if tour > 0:
+                raise RuntimeError("OpenRouter a tenté un nouvel appel d'outil après avoir reçu les données.")
             messages.append(message.model_dump(exclude_none=True))
             for appel in appels:
                 nom = appel.function.name
@@ -160,7 +167,13 @@ def repondre_openrouter(question: str, sol_choisi=None, client=None) -> dict:
     except APIConnectionError as exc:
         raise RuntimeError("OpenRouter est inaccessible : vérifie la connexion réseau.") from exc
     except APIStatusError as exc:
-        raise RuntimeError(f"OpenRouter a répondu HTTP {exc.status_code} : {str(exc)[:240]}") from exc
+        if exc.status_code in (401, 403):
+            raise RuntimeError("La clé OpenRouter est invalide ou n'est pas autorisée.") from exc
+        if exc.status_code == 404:
+            raise RuntimeError("Le modèle sélectionné par OpenRouter n'est plus disponible.") from exc
+        if exc.status_code >= 500:
+            raise RuntimeError("Le service OpenRouter ou le modèle choisi est temporairement indisponible.") from exc
+        raise RuntimeError(f"OpenRouter a refusé la requête (HTTP {exc.status_code}).") from exc
     except APIError as exc:
         raise RuntimeError("OpenRouter a renvoyé une réponse API invalide.") from exc
     raise RuntimeError("OpenRouter a dépassé le nombre maximal d'appels d'outils")
