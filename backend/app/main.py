@@ -17,6 +17,7 @@ from .sites import SITES
 app = FastAPI(title="Ares Sentinel", version="1.0.0")
 
 FRONTEND = Path(__file__).resolve().parent.parent.parent / "frontend"
+NASA_IMAGE = FRONTEND.parent / "docs" / "screenshots" / "nasa.png"
 
 
 class Question(BaseModel):
@@ -147,6 +148,11 @@ def poser_question(q: Question):
 @app.get("/api/exemples")
 def exemples():
     return {"exemples": assistant.EXEMPLES}
+
+
+@app.get("/nasa.png", include_in_schema=False)
+def image_nasa():
+    return FileResponse(NASA_IMAGE, media_type="image/png")
 
 
 # Le frontend (HTML/CSS/JS) est servi par le même serveur

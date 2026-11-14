@@ -20,6 +20,17 @@ def test_tools_are_json_serializable():
         json.dumps(function(), allow_nan=False)
 
 
+def test_nasa_space_apps_image_is_served():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    response = TestClient(app).get("/nasa.png")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+
 def test_openrouter_requires_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     assert llm.fournisseur() is None
