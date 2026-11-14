@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/screenshots/ares.png" alt="Ares Sentinel logo" width="250"></p>
+<p align="center"><img src="docs/screenshots/ares.png" alt="Ares Sentinel logo" width="350" height="350"></p>
 <h1 align="center">Ares Sentinel</h1>
 <p align="center">NASA Space App Challenge</p>
 
