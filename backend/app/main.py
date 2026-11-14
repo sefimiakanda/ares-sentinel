@@ -141,8 +141,7 @@ def poser_question(q: Question):
     except llm.LLMConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
     except (llm.LLMSansOutil, RuntimeError) as exc:
-        # Aucune réponse à règles ne masque une panne ou une réponse non vérifiable de Gemini.
-        raise HTTPException(status_code=502, detail=f"Gemini n'a pas pu produire une réponse vérifiable : {exc}") from None
+        raise HTTPException(status_code=502, detail=f"OpenRouter n'a pas pu produire une réponse vérifiable : {exc}") from None
 
 
 @app.get("/api/exemples")

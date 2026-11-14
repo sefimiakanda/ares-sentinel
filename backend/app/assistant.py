@@ -1,4 +1,4 @@
-"""Point d'entrée de l'assistant Ares Sentinel, propulsé exclusivement par Gemini."""
+"""Point d'entrée de l'assistant Ares Sentinel, propulsé par OpenRouter."""
 
 EXEMPLES = [
     "Puis-je sortir aujourd'hui ?",
@@ -15,19 +15,19 @@ LIMITE_GENERALE = (
 
 
 def repondre(question: str, sol_choisi=None) -> dict:
-    """Interroge Gemini ; aucune réponse locale de secours n'est fabriquée."""
+    """Interroge OpenRouter ; aucune réponse locale de secours n'est fabriquée."""
     from . import llm
     if not llm.fournisseur():
         raise llm.LLMConfigurationError(llm.etat()["raison"])
-    return llm.repondre_gemini(question, sol_choisi)
+    return llm.repondre_openrouter(question, sol_choisi)
 
 
 def etat_llm() -> dict:
-    """État Gemini exposé au tableau de bord."""
+    """État OpenRouter exposé au tableau de bord."""
     from . import llm
     etat = llm.etat()
     return {
-        "assistant": etat["fournisseur"] or "gemini_indisponible",
+        "assistant": etat["fournisseur"] or "openrouter_indisponible",
         "assistant_modele": etat["modele"],
         "assistant_raison": etat["raison"],
     }

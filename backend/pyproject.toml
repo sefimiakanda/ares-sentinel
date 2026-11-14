@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.162.3",
     "numpy>=2.5.4",
+    "openai>=1.0.0",
     "pandas>=3.1.1",
     "scikit-learn>=1.9.1",
     "uvicorn[standard]>=0.54.0",

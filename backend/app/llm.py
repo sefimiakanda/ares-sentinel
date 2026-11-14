@@ -1,16 +1,12 @@
-"""Connexion Gemini avec appels d'outils sur les données Ares Sentinel.
-
-Gemini est l'unique fournisseur LLM du projet. Les chiffres affichés doivent
-provenir des outils locaux, jamais de la connaissance du modèle.
-"""
+"""Assistant OpenRouter, via le SDK OpenAI-compatible et des outils locaux."""
 
 import json
 import os
 import re
-import urllib.error
-import urllib.request
 
-from . import config  # noqa: F401 - charge backend/.env
+from openai import APIConnectionError, APIError, APIStatusError, OpenAI, RateLimitError
+
+from . import config  # noqa: F401
 
 MAX_TOURS = 4
 MAX_QUESTION = 500
@@ -36,31 +32,44 @@ LIMITES: une limite utile pour interpréter la réponse.
 
 
 class LLMConfigurationError(RuntimeError):
-    """Gemini n'est pas configuré."""
+    """OpenRouter n'est pas configuré."""
 
 
 class LLMSansOutil(RuntimeError):
-    """Gemini a répondu sans consulter les données : la réponse est rejetée."""
+    """Le modèle n'a pas consulté les données."""
 
 
-def _cle_gemini() -> str:
-    return os.environ.get("GEMINI_API_KEY", "").strip()
+def _cle() -> str:
+    return os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 
-def _modele_gemini() -> str:
-    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+def _modele() -> str:
+    # Le routeur sélectionne un modèle gratuit qui accepte les outils demandés.
+    return os.environ.get("OPENROUTER_MODEL", "openrouter/free").strip()
 
 
 def fournisseur() -> str | None:
-    return "gemini" if _cle_gemini() else None
+    return "openrouter" if _cle() else None
 
 
 def etat() -> dict:
-    if _cle_gemini():
-        return {"pret": True, "fournisseur": "gemini", "modele": _modele_gemini(), "raison": ""}
-    emplacement = "un fichier .env sans GEMINI_API_KEY" if config.FICHIER_ENV_TROUVE else "aucun fichier backend/.env"
-    return {"pret": False, "fournisseur": None, "modele": _modele_gemini(),
-            "raison": f"Gemini n'est pas configuré : ajoute GEMINI_API_KEY dans {emplacement}, puis redémarre le serveur."}
+    if _cle():
+        return {"pret": True, "fournisseur": "openrouter", "modele": _modele(), "raison": ""}
+    ou = "un fichier .env sans OPENROUTER_API_KEY" if config.FICHIER_ENV_TROUVE else "aucun fichier backend/.env"
+    return {"pret": False, "fournisseur": None, "modele": _modele(),
+            "raison": f"OpenRouter n'est pas configuré : ajoute OPENROUTER_API_KEY dans {ou}, puis redémarre le serveur."}
+
+
+def _client() -> OpenAI:
+    if not _cle():
+        raise LLMConfigurationError(etat()["raison"])
+    return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=_cle(), timeout=60.0, max_retries=1)
+
+
+def _outils_openai() -> list:
+    from . import outils
+    return [{"type": "function", "function": {"name": d["name"], "description": d["description"], "parameters": d["input_schema"]}}
+            for d in outils.DEFINITIONS]
 
 
 def _executer_outil(nom, arguments):
@@ -69,8 +78,14 @@ def _executer_outil(nom, arguments):
     if fonction is None:
         return json.dumps({"erreur": f"Outil inconnu : {nom}"}), True
     definition = next(d for d in outils.DEFINITIONS if d["name"] == nom)
+    try:
+        arguments = json.loads(arguments or "{}") if isinstance(arguments, str) else (arguments or {})
+    except json.JSONDecodeError:
+        return json.dumps({"erreur": "Arguments d'outil JSON invalides."}), True
+    if not isinstance(arguments, dict):
+        return json.dumps({"erreur": "Les arguments d'outil doivent être un objet."}), True
     autorises = definition["input_schema"]["properties"].keys()
-    arguments = {k: v for k, v in (arguments or {}).items() if k in autorises and v not in (None, "")}
+    arguments = {k: v for k, v in arguments.items() if k in autorises and v not in (None, "")}
     try:
         resultat = fonction(**arguments)
         return json.dumps(resultat, ensure_ascii=False, default=str), "erreur" in resultat
@@ -89,98 +104,63 @@ def decouper_reponse(texte: str) -> dict:
 _NOMBRE = re.compile(r"\d+(?:[.,]\d+)?")
 
 
-def _nombres(texte: str) -> set:
-    return {float(n.replace(",", ".")) for n in _NOMBRE.findall(texte)}
-
-
 def chiffres_non_verifies(texte_reponse: str, resultats_outils: list, question: str) -> list:
-    connus = _nombres(question)
+    connus = {float(n.replace(",", ".")) for n in _NOMBRE.findall(question)}
     for resultat in resultats_outils:
-        connus |= _nombres(resultat)
-    arrondis = {round(x) for x in connus}
+        connus |= {float(n.replace(",", ".")) for n in _NOMBRE.findall(resultat)}
     suspects = []
-    for texte in sorted(_NOMBRE.findall(texte_reponse)):
+    for texte in _NOMBRE.findall(texte_reponse):
         n = float(texte.replace(",", "."))
-        if n <= 10 or n == 100 or n in connus or (n.is_integer() and n in arrondis):
-            continue
-        if texte not in suspects:
+        if n > 10 and n != 100 and n not in connus and not (n.is_integer() and n in {round(x) for x in connus}) and texte not in suspects:
             suspects.append(texte)
     return suspects
 
 
-def _finaliser(texte, resultats, entree, sol_cite, outils_utilises):
+def _finaliser(texte, resultats, question, sol, outils_utilises):
     from .assistant import LIMITE_GENERALE
     parties = decouper_reponse(texte)
-    suspects = chiffres_non_verifies(parties["constat"] + "\n" + "\n".join(parties["preuves"]), resultats, entree)
     return {"constat": parties["constat"], "preuves": parties["preuves"], "limites": parties["limites"] or LIMITE_GENERALE,
-            "source": "NASA Mars Weather Service / Curiosity REMS (cache local)", "sol_cite": sol_cite,
-            "type": f"Google Gemini ({_modele_gemini()}) + outils sur données réelles",
-            "outils_utilises": outils_utilises, "chiffres_non_verifies": suspects}
+            "source": "NASA Mars Weather Service / Curiosity REMS (cache local)", "sol_cite": sol,
+            "type": f"OpenRouter ({_modele()}) + outils sur données réelles", "outils_utilises": outils_utilises,
+            "chiffres_non_verifies": chiffres_non_verifies(parties["constat"] + "\n" + "\n".join(parties["preuves"]), resultats, question)}
 
 
-def _base_gemini() -> str:
-    return os.environ.get("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
-
-
-def _appeler_gemini(payload: dict) -> dict:
-    if not _cle_gemini():
-        raise LLMConfigurationError(etat()["raison"])
-    url = f"{_base_gemini()}/models/{_modele_gemini()}:generateContent"
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json", "x-goog-api-key": _cle_gemini()}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=60) as reponse:
-            return json.loads(reponse.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Gemini a répondu HTTP {exc.code} : {exc.read().decode('utf-8', 'replace')[:300]}") from None
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Gemini est inaccessible : {exc.reason}") from None
-
-
-def _declarations_gemini():
-    from . import outils
-    declarations = []
-    for definition in outils.DEFINITIONS:
-        item = {"name": definition["name"], "description": definition["description"]}
-        if definition["input_schema"]["properties"]:
-            item["parameters"] = {"type": "object", "properties": definition["input_schema"]["properties"]}
-        declarations.append(item)
-    return [{"functionDeclarations": declarations}]
-
-
-def repondre_gemini(question: str, sol_choisi=None, appeler=None) -> dict:
-    appeler = appeler or _appeler_gemini
+def repondre_openrouter(question: str, sol_choisi=None, client=None) -> dict:
     question = question.strip()[:MAX_QUESTION]
     contexte = f"\n\n(Contexte : l'utilisateur regarde le sol {int(sol_choisi)}.)" if sol_choisi else ""
-    messages = [{"role": "user", "parts": [{"text": question + contexte}]}]
-    sol_cite, outils_utilises, resultats = None, [], []
-    for tour in range(MAX_TOURS):
-        requete = {"systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]}, "contents": messages,
-                   "tools": _declarations_gemini(), "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048}}
-        # Gemini doit obligatoirement interroger les données au premier tour. Aux tours
-        # suivants, il peut rédiger la réponse après avoir reçu le résultat de l'outil.
-        if tour == 0:
-            requete["toolConfig"] = {"functionCallingConfig": {"mode": "ANY"}}
-        data = appeler(requete)
-        try:
-            contenu = data["candidates"][0]["content"]
-        except (KeyError, IndexError):
-            raise RuntimeError("Réponse Gemini vide ou bloquée") from None
-        parties = contenu.get("parts", [])
-        appels = [partie["functionCall"] for partie in parties if "functionCall" in partie]
-        if not appels:
-            if not outils_utilises:
-                raise LLMSansOutil("Gemini a répondu sans consulter les données")
-            texte = "".join(partie.get("text", "") for partie in parties if "text" in partie and not partie.get("thought"))
-            return _finaliser(texte, resultats, question + contexte, sol_cite, outils_utilises)
-        messages.append(contenu)
-        reponses = []
-        for appel in appels:
-            nom = appel["name"]
-            texte_json, erreur = _executer_outil(nom, appel.get("args"))
-            outils_utilises.append(nom)
-            resultats.append(texte_json)
-            if nom == "obtenir_sortie" and not erreur:
-                sol_cite = json.loads(texte_json).get("sol")
-            reponses.append({"functionResponse": {"name": nom, "response": {"result": json.loads(texte_json)}}})
-        messages.append({"role": "user", "parts": reponses})
-    raise RuntimeError("Gemini a dépassé le nombre maximal d'appels d'outils")
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question + contexte}]
+    client = client or _client()
+    sol_cite, utilises, resultats = None, [], []
+    try:
+        for tour in range(MAX_TOURS):
+            reponse = client.chat.completions.create(model=_modele(), messages=messages, tools=_outils_openai(),
+                                                      tool_choice="required" if tour == 0 else "auto", temperature=0.2, max_tokens=1024)
+            if not reponse.choices:
+                raise RuntimeError("OpenRouter a renvoyé une réponse vide.")
+            message = reponse.choices[0].message
+            if message is None:
+                raise RuntimeError("OpenRouter a renvoyé un message vide.")
+            appels = message.tool_calls or []
+            if not appels:
+                if not utilises:
+                    raise LLMSansOutil("OpenRouter a répondu sans consulter les données")
+                if not (message.content or "").strip():
+                    raise RuntimeError("OpenRouter n'a pas fourni de réponse après les outils.")
+                return _finaliser(message.content or "", resultats, question + contexte, sol_cite, utilises)
+            messages.append(message.model_dump(exclude_none=True))
+            for appel in appels:
+                nom = appel.function.name
+                texte, erreur = _executer_outil(nom, appel.function.arguments)
+                utilises.append(nom); resultats.append(texte)
+                if nom == "obtenir_sortie" and not erreur:
+                    sol_cite = json.loads(texte).get("sol")
+                messages.append({"role": "tool", "tool_call_id": appel.id, "content": texte})
+    except RateLimitError as exc:
+        raise RuntimeError("OpenRouter a atteint sa limite de requêtes ; réessaie dans un instant.") from exc
+    except APIConnectionError as exc:
+        raise RuntimeError("OpenRouter est inaccessible : vérifie la connexion réseau.") from exc
+    except APIStatusError as exc:
+        raise RuntimeError(f"OpenRouter a répondu HTTP {exc.status_code} : {str(exc)[:240]}") from exc
+    except APIError as exc:
+        raise RuntimeError("OpenRouter a renvoyé une réponse API invalide.") from exc
+    raise RuntimeError("OpenRouter a dépassé le nombre maximal d'appels d'outils")

@@ -1,7 +1,7 @@
 """Charge les secrets depuis un fichier .env (jamais envoyé sur GitHub).
 
 Le fichier .env se place dans backend/ et contient des lignes du type :
-    GEMINI_API_KEY=ta_cle_ici
+    OPENROUTER_API_KEY=ta_cle_ici
 Les variables déjà définies par le système (ex : Render) restent prioritaires.
 """
 
